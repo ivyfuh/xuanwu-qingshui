@@ -279,15 +279,28 @@ let STATE = {
   docStatus: {},   // { owner_id: { docType: true } }
 };
 
-// 收件文件類型（固定 6 類，上傳即視為已收）
+// 收件文件類型（上傳即視為已收）
+// needAgent: 只有有代理人才需要 | selectOnly: 只有參與選配才需要
 const DOC_TYPES = [
-  { key: '都更同意書',   needAgent: false },
-  { key: '意願調查表',   needAgent: false },
-  { key: '選配申請書',   needAgent: false },
-  { key: '本人證件',     needAgent: false },
-  { key: '代理人證件',   needAgent: true  },
-  { key: '授權書',       needAgent: true  },
+  { key: '都更同意書',     needAgent: false, selectOnly: false },
+  { key: '防災都更同意書', needAgent: false, selectOnly: false },
+  { key: '意願調查表',     needAgent: false, selectOnly: false },
+  { key: '選配申請書',     needAgent: false, selectOnly: true  },
+  { key: '本人證件',       needAgent: false, selectOnly: false },
+  { key: '代理人證件',     needAgent: true,  selectOnly: false },
+  { key: '授權書',         needAgent: true,  selectOnly: false },
 ];
+
+// 依地主屬性篩出需要的收件項目
+function requiredDocsFor(owner) {
+  const hasAgent    = owner && (owner.has_agent === true || owner.has_agent === 'true');
+  const participate = !owner || (owner.participate !== false && owner.participate !== 'false');
+  return DOC_TYPES.filter(dt => {
+    if (dt.needAgent && !hasAgent) return false;
+    if (dt.selectOnly && !participate) return false;
+    return true;
+  });
+}
 
 // ============================================================
 //  AUTH
@@ -359,9 +372,7 @@ async function loadDocStatus() {
 function ownerDocProgress(ownerId) {
   const has = STATE.docStatus[ownerId] || {};
   const owner = STATE.owners.find(o => o.owner_id == ownerId);
-  const hasAgent = owner && (owner.has_agent === true || owner.has_agent === 'true');
-  // 沒代理人的地主不需要代理人證件、授權書
-  const required = DOC_TYPES.filter(dt => hasAgent || !dt.needAgent);
+  const required = requiredDocsFor(owner);
   const done = required.filter(dt => has[dt.key]).length;
   const missing = required.filter(dt => !has[dt.key]).map(dt => dt.key);
   return { done, total: required.length, missing };
@@ -490,7 +501,7 @@ function renderOwnerList() {
       onclick="selectOwner('${o.owner_id}')" class="owner-row">
       <div style="font-size:12px;color:var(--tt);">${o.serial_no||''}</div>
       <div>
-        <div style="font-weight:500;">${o.name||''}${(o.has_agent==='true'||o.has_agent===true)?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;">代理</span>':''}</div>
+        <div style="font-weight:500;">${o.name||''}${(o.has_agent==='true'||o.has_agent===true)?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;">代理</span>':''}${(o.participate==='false'||o.participate===false)?' <span style="font-size:10px;color:var(--tt);background:var(--cs);padding:0 5px;border-radius:6px;">不參與</span>':''}</div>
         <div class="text-xs" style="display:flex;align-items:center;gap:6px;">
           <span class="text-muted">${o.phone||''}</span>
           ${docProgressBadge(o.owner_id)}
@@ -589,6 +600,19 @@ function renderOwnerDetail(ownerId) {
     <div class="text-xs text-muted mb-4">選配內容</div>
     ${unitRows}${parkRows}
 
+    ${(owner.participate==='false'||owner.participate===false) ? `
+    <div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;margin-top:12px;font-size:12px;color:var(--ts);text-align:center;">
+      <i class="ti ti-info-circle"></i> 此地主不參與選配（不願/不能領取更新前價值），無需選位置
+    </div>
+    <div class="flex gap-6 mt-12">
+      <button class="btn-secondary flex-1" style="font-size:12px;" onclick="openCallModal('${ownerId}')">
+        <i class="ti ti-phone"></i> 記錄通話
+      </button>
+      <button class="btn-secondary flex-1" style="font-size:12px;" onclick="openUploadModal('${ownerId}')">
+        <i class="ti ti-upload"></i> 上傳文件
+      </button>
+    </div>
+    ` : `
     <div class="flex gap-6 mt-12">
       <button class="btn-secondary flex-1" onclick="openSelectionModal('${ownerId}')">
         <i class="ti ti-pencil"></i> ${sel ? '改選' : '選配'}
@@ -608,6 +632,7 @@ function renderOwnerDetail(ownerId) {
     ${sel ? `<button class="btn-primary" style="width:100%;margin-top:6px;font-size:12px;" onclick="printApplication('${ownerId}')">
       <i class="ti ti-printer"></i> 列印分配位置申請書
     </button>` : ''}
+    `}
 
     ${renderDocChecklist(ownerId)}
   `;
@@ -615,10 +640,9 @@ function renderOwnerDetail(ownerId) {
 
 function renderDocChecklist(ownerId) {
   const owner = STATE.owners.find(o => o.owner_id == ownerId);
-  const hasAgent = owner && (owner.has_agent === true || owner.has_agent === 'true');
   const has = STATE.docStatus[ownerId] || {};
   const prog = ownerDocProgress(ownerId);
-  const items = DOC_TYPES.filter(dt => hasAgent || !dt.needAgent).map(dt => {
+  const items = requiredDocsFor(owner).map(dt => {
     const done = !!has[dt.key];
     return `<div class="flex items-center gap-6" style="padding:4px 0;font-size:12px;">
       <i class="ti ${done?'ti-circle-check-filled':'ti-circle'}" style="font-size:15px;color:${done?'var(--green)':'var(--tt)'};"></i>
@@ -785,7 +809,14 @@ function openOwnerModal(ownerId) {
       <div class="field-label">身分證字號（僅儲存雜湊，不保留明碼）</div>
       <input type="text" id="o-id" placeholder="${owner ? '•••••••••• （留空不變更）' : 'A123456789'}" maxlength="10">
     </div>
-    <div class="grid-2 mb-16">
+    <div class="grid-2 mb-12">
+      <div>
+        <div class="field-label">是否參與選配</div>
+        <select id="o-participate">
+          <option value="true" ${owner?.participate!=='false'&&owner?.participate!==false?'selected':''}>參與選配</option>
+          <option value="false" ${owner?.participate==='false'||owner?.participate===false?'selected':''}>不參與（不願/不能領取）</option>
+        </select>
+      </div>
       <div>
         <div class="field-label">是否有代理人</div>
         <select id="o-hasagent" onchange="document.getElementById('o-agentname').disabled = this.value!=='true'">
@@ -793,11 +824,11 @@ function openOwnerModal(ownerId) {
           <option value="true" ${owner?.has_agent==='true'||owner?.has_agent===true?'selected':''}>有</option>
         </select>
       </div>
-      <div>
-        <div class="field-label">代理人姓名</div>
-        <input type="text" id="o-agentname" value="${owner?.agent_name||''}" placeholder="代理人姓名"
-          ${(owner?.has_agent==='true'||owner?.has_agent===true)?'':'disabled'}>
-      </div>
+    </div>
+    <div class="mb-16">
+      <div class="field-label">代理人姓名</div>
+      <input type="text" id="o-agentname" value="${owner?.agent_name||''}" placeholder="代理人姓名"
+        ${(owner?.has_agent==='true'||owner?.has_agent===true)?'':'disabled'}>
     </div>
     <div class="flex gap-8 justify-between">
       <button class="btn-secondary" onclick="closeModal()">取消</button>
@@ -815,6 +846,7 @@ async function submitOwner(ownerId) {
     address:      document.getElementById('o-address').value,
     rights_value: Number(document.getElementById('o-rights').value),
     handler:      document.getElementById('o-handler').value,
+    participate:  document.getElementById('o-participate').value,
     has_agent:    document.getElementById('o-hasagent').value,
     agent_name:   document.getElementById('o-agentname').value,
   };
@@ -891,12 +923,10 @@ async function submitCallLog() {
 function openUploadModal(ownerId) {
   const owner = STATE.owners.find(o => o.owner_id == ownerId);
   const hasAgent = owner && (owner.has_agent === true || owner.has_agent === 'true');
-  const caseName = STATE.caseConfig?.case_name || '清水段';
 
   // 收件狀態，已上傳的類型顯示已收
   const has = STATE.docStatus[ownerId] || {};
-  const typeOptions = DOC_TYPES
-    .filter(dt => hasAgent || !dt.needAgent)
+  const typeOptions = requiredDocsFor(owner)
     .map(dt => `<option value="${dt.key}">${dt.key}${has[dt.key]?'（已收，重新上傳將覆蓋）':''}</option>`)
     .join('');
 

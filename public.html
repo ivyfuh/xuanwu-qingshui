@@ -617,6 +617,13 @@ async function doVerify() {
       return;
     }
 
+    if (res.no_selection) {
+      el.innerHTML = `<div style="background:var(--cs);border:0.5px solid var(--bt);border-radius:var(--rm);padding:12px 14px;font-size:13px;color:var(--ts);margin-top:8px;">
+        ${res.name} 您好，您目前未參與本案選配。如有疑問請聯絡漢皇建設。
+      </div>`;
+      return;
+    }
+
     const sel    = res.selection;
     const settle = sel ? Number(sel.settlement) : 0;
     const units  = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
