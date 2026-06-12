@@ -321,7 +321,7 @@ async function apiGet(action, params = {}) {
 async function apiPost(action, body = {}) {
   const res = await fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action, auth: { token: USER?.token, email: USER?.email }, ...body }),
   });
   const d = await res.json();
