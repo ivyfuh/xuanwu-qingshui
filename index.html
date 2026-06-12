@@ -146,7 +146,7 @@ tr.selected td{background:#EDF5FB;}
       <div class="nav-item" id="nav-announce" onclick="navTo('announce')"><i class="ti ti-speakerphone"></i>公告管理</div>
       <div class="nav-section">報表</div>
       <div class="nav-item" id="nav-settle" onclick="navTo('settle')"><i class="ti ti-coin"></i>找補彙總</div>
-      <div class="nav-item" id="nav-export" onclick="doExport()"><i class="ti ti-table-export"></i>匯出報告書</div>
+      <div class="nav-item" id="nav-export" onclick="doExport()"><i class="ti ti-table-export"></i>匯出選配結果</div>
       <div style="flex:1;"></div>
       <div style="border-top:0.5px solid var(--bt);padding:6px 6px 0;">
         <div class="nav-item" id="nav-settings" onclick="navTo('settings')"><i class="ti ti-settings"></i>案件設定</div>
@@ -159,38 +159,44 @@ tr.selected td{background:#EDF5FB;}
       <!-- ===== LIST VIEW ===== -->
       <div id="view-list">
         <!-- Top bar -->
-        <div class="flex items-center gap-8 mb-16" style="flex-wrap:wrap;">
-          <input type="text" id="search" placeholder="搜尋地主姓名 / 編號…"
+        <div class="flex items-center gap-8 mb-12" style="flex-wrap:wrap;">
+          <input type="text" id="search" placeholder="搜尋姓名 / 編號…"
             style="width:200px;" oninput="filterOwners()">
-          <button class="btn-secondary text-sm" id="f-all"  onclick="setFilter('')">全部</button>
-          <button class="btn-secondary text-sm" id="f-dup"  onclick="setFilter('dup')"  style="color:var(--red-text);">重複</button>
-          <button class="btn-secondary text-sm" id="f-over" onclick="setFilter('over')" style="color:var(--orange-text);">超選</button>
-          <button class="btn-secondary text-sm" id="f-draft" onclick="setFilter('draft')" style="color:#0C447C;">草稿</button>
-          <button class="btn-secondary text-sm" id="f-mine" onclick="setFilter('mine')">我的</button>
-          <button class="btn-secondary text-sm" id="f-incomplete" onclick="setFilter('incomplete')" style="color:var(--red-text);">收件未齊</button>
-          <button class="btn-primary" onclick="openOwnerModal(null)" style="margin-left:auto;">
+          <button class="btn-secondary" onclick="openOwnerModal(null)" style="margin-left:auto;font-size:12px;padding:5px 12px;">
             <i class="ti ti-plus"></i> 新增地主
           </button>
         </div>
 
-        <!-- Stats row -->
-        <div class="grid-2 mb-16" style="grid-template-columns:repeat(4,1fr);">
+        <!-- Filter chips -->
+        <div class="flex items-center gap-6 mb-16" style="flex-wrap:wrap;">
+          <button class="btn-secondary text-sm" id="f-all" onclick="setFilter('')">全部</button>
+          <button class="btn-secondary text-sm" id="f-selected" onclick="setFilter('selected')" style="color:var(--green-text);">已完成選屋</button>
+          <button class="btn-secondary text-sm" id="f-unselected" onclick="setFilter('unselected')" style="color:#0C447C;">尚未選屋</button>
+          <button class="btn-secondary text-sm" id="f-incomplete" onclick="setFilter('incomplete')" style="color:var(--red-text);">收件未齊</button>
+          <button class="btn-secondary text-sm" id="f-nonparticipate" onclick="setFilter('nonparticipate')" style="color:var(--tt);">不參與權變</button>
+          <button class="btn-secondary text-sm" id="f-dup" onclick="setFilter('dup')" style="color:var(--red-text);">重複</button>
+          <button class="btn-secondary text-sm" id="f-over" onclick="setFilter('over')" style="color:var(--orange-text);">超選</button>
+          <button class="btn-secondary text-sm" id="f-draft" onclick="setFilter('draft')" style="color:#0C447C;">草稿</button>
+        </div>
+
+        <!-- Stats row — 全案進度視角 -->
+        <div class="grid-2 mb-16" style="grid-template-columns:repeat(5,1fr);">
           <div class="stat-card"><div class="stat-n" id="st-total" style="color:var(--accent);">—</div><div class="stat-l">地主總數</div></div>
-          <div class="stat-card"><div class="stat-n" id="st-confirmed" style="color:var(--green-text);">—</div><div class="stat-l">正式登錄</div></div>
-          <div class="stat-card"><div class="stat-n" id="st-dup" style="color:var(--red-text);">—</div><div class="stat-l">有重複</div></div>
-          <div class="stat-card"><div class="stat-n" id="st-over" style="color:var(--orange-text);">—</div><div class="stat-l">超過110%</div></div>
+          <div class="stat-card"><div class="stat-n" id="st-selected" style="color:var(--green-text);">—</div><div class="stat-l">已完成選屋</div></div>
+          <div class="stat-card"><div class="stat-n" id="st-unselected" style="color:#0C447C;">—</div><div class="stat-l">尚未選屋</div></div>
+          <div class="stat-card"><div class="stat-n" id="st-incomplete" style="color:var(--red-text);">—</div><div class="stat-l">收件未齊</div></div>
+          <div class="stat-card"><div class="stat-n" id="st-nonpart" style="color:var(--tt);">—</div><div class="stat-l">不參與權變</div></div>
         </div>
 
         <!-- Table -->
         <div class="card" style="padding:0;overflow:hidden;">
           <!-- Table header -->
-          <div style="display:grid;grid-template-columns:60px 1fr 90px 100px 60px 28px;
+          <div style="display:grid;grid-template-columns:56px 1fr 80px 88px 28px;
             padding:7px 14px;background:var(--cs);gap:8px;border-bottom:0.5px solid var(--bt);">
             <span class="text-xs text-muted font-medium">編號</span>
             <span class="text-xs text-muted font-medium">地主</span>
-            <span class="text-xs text-muted font-medium">狀態</span>
-            <span class="text-xs text-muted font-medium">使用率</span>
-            <span class="text-xs text-muted font-medium">負責</span>
+            <span class="text-xs text-muted font-medium">選屋</span>
+            <span class="text-xs text-muted font-medium">收件</span>
             <span></span>
           </div>
           <div id="owner-rows"></div>
@@ -463,62 +469,87 @@ function renderOwnerList() {
   const q = STATE.search.toLowerCase();
   const f = STATE.filter;
 
-  let list = STATE.owners.filter(o => {
+  // 依編號排序
+  const sorted = [...STATE.owners].sort((a,b) => {
+    const na = String(a.serial_no||'').padStart(8,'0');
+    const nb = String(b.serial_no||'').padStart(8,'0');
+    return na.localeCompare(nb);
+  });
+
+  let list = sorted.filter(o => {
     if (q && !o.name?.toLowerCase().includes(q) && !String(o.serial_no||'').includes(q)) return false;
     const sel = getSelForOwner(o.owner_id);
-    const st  = ownerStatus(o, sel);
-    if (f === 'dup'   && st !== 'dup')   return false;
-    if (f === 'over'  && st !== 'over')  return false;
-    if (f === 'draft' && st !== 'draft') return false;
-    if (f === 'mine'  && o.handler !== USER?.email?.split('@')[0]) return false;
-    if (f === 'incomplete') { const p = ownerDocProgress(o.owner_id); if (p.done === p.total) return false; }
+    const nonpart = (o.participate==='false'||o.participate===false);
+    const prog = ownerDocProgress(o.owner_id);
+    if (f === 'selected'    && (!sel || sel.status==='draft' || nonpart)) return false;
+    if (f === 'unselected'  && (sel && !nonpart ? sel.status!=='draft' : false) ) { /* keep drafts/none */ }
+    if (f === 'unselected'  && (nonpart || (sel && sel.status==='confirmed'))) return false;
+    if (f === 'incomplete'  && prog.done === prog.total) return false;
+    if (f === 'nonparticipate' && !nonpart) return false;
+    if (f === 'dup')  { if (!sel || !checkDuplicate(sel)) return false; }
+    if (f === 'over') { if (!sel || !sel.is_over_limit) return false; }
+    if (f === 'draft'){ if (!sel || sel.status!=='draft') return false; }
     return true;
   });
 
-  // Stats
+  // 全案統計（不受篩選影響）
   const all  = STATE.owners;
-  const sels = STATE.selections.filter(s => s.status !== 'deleted');
-  document.getElementById('st-total').textContent     = all.length;
-  document.getElementById('st-confirmed').textContent = sels.filter(s => s.status === 'confirmed').length;
-  document.getElementById('st-dup').textContent       = sels.filter(s => checkDuplicate(s)).length;
-  document.getElementById('st-over').textContent      = sels.filter(s => s.is_over_limit).length;
+  const participating = all.filter(o => !(o.participate==='false'||o.participate===false));
+  const selectedCount = participating.filter(o => {
+    const s = getSelForOwner(o.owner_id); return s && s.status==='confirmed';
+  }).length;
+  const unselectedCount = participating.filter(o => {
+    const s = getSelForOwner(o.owner_id); return !s || s.status==='draft';
+  }).length;
+  const incompleteCount = all.filter(o => { const p = ownerDocProgress(o.owner_id); return p.done < p.total; }).length;
+  const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false)).length;
+
+  document.getElementById('st-total').textContent      = all.length;
+  document.getElementById('st-selected').textContent   = selectedCount;
+  document.getElementById('st-unselected').textContent = unselectedCount;
+  document.getElementById('st-incomplete').textContent = incompleteCount;
+  document.getElementById('st-nonpart').textContent    = nonpartCount;
 
   const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft' };
-  const stLabel = { ok:'正式', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未登記' };
+  const stLabel = { ok:'已選', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未選' };
 
   const rows = list.map(o => {
     const sel = getSelForOwner(o.owner_id);
+    const nonpart = (o.participate==='false'||o.participate===false);
     const st  = ownerStatus(o, sel);
-    const limit = Number(o.upper_limit) || 0;
-    const total = sel ? (Number(sel.total_value) || 0) : 0;
-    const pct   = limit > 0 ? Math.min(100, Math.round(total / limit * 100)) : 0;
-    const barColor = total > limit ? 'var(--red)' : pct > 90 ? 'var(--orange)' : 'var(--green)';
     const isActive = STATE.selected_owner_id == o.owner_id;
+    const prog = ownerDocProgress(o.owner_id);
+    const docOk = prog.done === prog.total;
 
-    return `<div style="display:grid;grid-template-columns:60px 1fr 90px 100px 60px 28px;
-      align-items:center;padding:9px 14px;border-bottom:0.5px solid var(--bt);
+    // 不參與權變的狀態標籤特殊處理
+    const statusBadge = nonpart
+      ? `<span class="badge" style="background:var(--cs);color:var(--tt);">不參與</span>`
+      : `<span class="badge ${stMap[st]||''}">${stLabel[st]||st}</span>`;
+
+    return `<div style="display:grid;grid-template-columns:56px 1fr 80px 88px 28px;
+      align-items:center;padding:10px 14px;border-bottom:0.5px solid var(--bt);
       cursor:pointer;gap:8px;${isActive?'background:#EDF5FB;':''}"
       onclick="selectOwner('${o.owner_id}')" class="owner-row">
       <div style="font-size:12px;color:var(--tt);">${o.serial_no||''}</div>
       <div>
-        <div style="font-weight:500;">${o.name||''}${(o.has_agent==='true'||o.has_agent===true)?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;">代理</span>':''}${(o.participate==='false'||o.participate===false)?' <span style="font-size:10px;color:var(--tt);background:var(--cs);padding:0 5px;border-radius:6px;">不參與</span>':''}</div>
-        <div class="text-xs" style="display:flex;align-items:center;gap:6px;">
-          <span class="text-muted">${o.phone||''}</span>
-          ${docProgressBadge(o.owner_id)}
-        </div>
+        <div style="font-weight:500;">${o.name||''}${(o.has_agent==='true'||o.has_agent===true)?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;">代理</span>':''}</div>
       </div>
-      <div><span class="badge ${stMap[st]||''}">${stLabel[st]||st}</span></div>
-      <div style="display:flex;align-items:center;gap:5px;">
-        <div class="pbar-bg" style="flex:1;"><div class="pbar-fill" style="width:${pct}%;background:${barColor};"></div></div>
-        <span class="text-xs text-muted">${pct}%</span>
-      </div>
-      <div class="text-xs text-muted">${o.handler||''}</div>
+      <div>${statusBadge}</div>
+      <div>${docOk
+        ? `<span class="badge badge-ok" style="font-size:10px;">收件齊全</span>`
+        : `<span class="badge badge-dup" style="font-size:10px;" title="缺：${prog.missing.join('、')}">收件 ${prog.done}/${prog.total}</span>`}</div>
       <div><i class="ti ti-chevron-right" style="color:var(--tt);"></i></div>
     </div>`;
   }).join('');
 
-  document.getElementById('owner-rows').innerHTML = rows ||
-    '<div style="padding:40px;text-align:center;color:var(--tt);">無符合條件的地主</div>';
+  // 篩選結果人數
+  const filterLabels = { '':'全部', selected:'已完成選屋', unselected:'尚未選屋',
+    incomplete:'收件未齊', nonparticipate:'不參與權變', dup:'重複', over:'超選', draft:'草稿' };
+  const countBar = `<div style="padding:8px 14px;background:var(--cs);border-bottom:0.5px solid var(--bt);
+    font-size:12px;color:var(--ts);">${filterLabels[f]||'全部'}：共 <b style="color:var(--tp);">${list.length}</b> 人</div>`;
+
+  document.getElementById('owner-rows').innerHTML = countBar + (rows ||
+    '<div style="padding:40px;text-align:center;color:var(--tt);">無符合條件的地主</div>');
   updateSidebar();
 }
 
@@ -1005,19 +1036,29 @@ async function doExport() {
     const records = data.records || [];
     if (!records.length) { alert('無資料可匯出'); return; }
 
-    // Build CSV
-    const headers = Object.keys(records[0]);
-    const csv = [
-      headers.join(','),
-      ...records.map(r => headers.map(h => `"${String(r[h]||'').replace(/"/g,'""')}"`).join(','))
-    ].join('\n');
-
     const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+    const esc = v => `"${String(v||'').replace(/"/g,'""')}"`;
+    const lines = [];
+
+    // 彙整表（超選/退選統計）
+    if (data.summary) {
+      lines.push('【選配彙整】');
+      Object.entries(data.summary).forEach(([k,v]) => lines.push(`${esc(k)},${esc(v)}`));
+      lines.push('');  // blank line
+    }
+
+    // 選配明細
+    lines.push('【選配明細】');
+    const headers = Object.keys(records[0]);
+    lines.push(headers.map(esc).join(','));
+    records.forEach(r => lines.push(headers.map(h => esc(r[h])).join(',')));
+
+    const blob = new Blob([BOM + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url;
-    a.download = `清水段_選屋登記總表_${new Date().toISOString().slice(0,10)}.csv`;
+    const caseName = STATE.caseConfig?.case_name || '清水段';
+    a.download = `${caseName}_選配結果_顧問用_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('匯出失敗：' + e.message); }
