@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>清水段選屋系統 — 後台作業</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{
+  --cp:#fff;--cs:#f6f5f0;--ct:#eeede8;
+  --tp:#1a1a18;--ts:#6b6a64;--tt:#9c9a92;
+  --bt:rgba(0,0,0,.12);--bs:rgba(0,0,0,.28);
+  --rm:8px;--rl:12px;
+  --accent:#534AB7;--accent-bg:#EEEDFE;--accent-text:#3C3489;
+  --green:#1D9E75;--green-bg:#E1F5EE;--green-text:#085041;
+  --brand:#748B97;--brand-dark:#5F7682;--brand-bg:#E8EDF0;--brand-text:#3D4D56;
+  --red:#E24B4A;--red-bg:#FCEBEB;--red-text:#791F1F;
+  --orange:#EF9F27;--orange-bg:#FAEEDA;--orange-text:#633806;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --cp:#1c1c1a;--cs:#242422;--ct:#2e2e2c;
+    --tp:#e8e6de;--ts:#9c9a92;--tt:#6b6a64;
+    --bt:rgba(255,255,255,.12);--bs:rgba(255,255,255,.28);
+  }
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans-serif;
+  background:var(--ct);font-size:13px;color:var(--tp);}
+input,button,select,textarea{font-family:inherit;font-size:13px;color:var(--tp);}
+input,select,textarea{background:var(--cp);border:0.5px solid var(--bs);border-radius:var(--rm);
+  padding:6px 10px;outline:none;width:100%;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(83,74,183,.15);}
+button{cursor:pointer;border-radius:var(--rm);padding:6px 14px;border:none;font-weight:500;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{opacity:.88;}
+.btn-secondary{background:var(--cs);color:var(--tp);border:0.5px solid var(--bs);}
+.btn-success{background:var(--green);color:#fff;}
+.btn-danger{background:var(--red-bg);color:var(--red-text);border:0.5px solid var(--red);}
+.card{background:var(--cp);border:0.5px solid var(--bt);border-radius:var(--rl);padding:16px;}
+.badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:500;
+  padding:2px 8px;border-radius:10px;white-space:nowrap;}
+.badge-ok    {background:var(--green-bg);color:var(--green-text);}
+.badge-draft {background:#E6F1FB;color:#0C447C;}
+.badge-dup   {background:var(--red-bg);color:var(--red-text);}
+.badge-over  {background:var(--orange-bg);color:var(--orange-text);}
+.badge-resel {background:var(--accent-bg);color:var(--accent-text);}
+
+/* Layout */
+#app{display:flex;flex-direction:column;min-height:100vh;}
+#topbar{display:flex;align-items:center;padding:10px 16px;background:var(--cp);
+  border-bottom:0.5px solid var(--bt);gap:10px;flex-shrink:0;position:sticky;top:0;z-index:100;}
+#body{display:flex;flex:1;overflow:hidden;}
+#sidebar{width:200px;background:var(--cs);border-right:0.5px solid var(--bt);
+  display:flex;flex-direction:column;padding:8px 0;overflow-y:auto;flex-shrink:0;}
+#main{flex:1;overflow:auto;padding:20px;}
+#detail{display:none;width:300px;background:var(--cp);border-left:0.5px solid var(--bt);
+  overflow-y:auto;padding:16px;flex-shrink:0;}
+
+/* Sidebar */
+.nav-item{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:13px;
+  color:var(--ts);cursor:pointer;border-radius:8px;margin:1px 6px;transition:background .1s;}
+.nav-item:hover,.nav-item.active{background:var(--cp);color:var(--tp);font-weight:500;}
+.nav-section{font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--tt);padding:10px 14px 4px;}
+
+/* Table */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--cs);padding:7px 12px;text-align:left;font-weight:500;color:var(--tt);
+  border-bottom:0.5px solid var(--bt);white-space:nowrap;}
+td{padding:8px 12px;border-bottom:0.5px solid var(--bt);vertical-align:middle;}
+tr:hover td{background:var(--cs);}
+tr.selected td{background:#EDF5FB;}
+
+/* Test banner */
+#test-banner{background:#FAEEDA;border-bottom:1px solid var(--orange);
+  padding:6px 16px;font-size:12px;color:var(--orange-text);display:flex;
+  align-items:center;gap:8px;}
+
+/* Progress bar */
+.pbar-bg{height:6px;background:var(--ct);border-radius:3px;overflow:hidden;}
+.pbar-fill{height:100%;border-radius:3px;transition:width .3s;}
+
+/* Modal */
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+  z-index:200;align-items:center;justify-content:center;}
+#modal-overlay.open{display:flex;}
+#modal-box{background:var(--cp);border-radius:var(--rl);padding:24px;
+  width:100%;max-width:560px;max-height:90vh;overflow-y:auto;margin:16px;}
+
+/* Util */
+.flex{display:flex;}.gap-6{gap:6px;}.gap-8{gap:8px;}.gap-12{gap:12px;}
+.flex-1{flex:1;}.items-center{align-items:center;}.justify-between{justify-content:space-between;}
+.mb-4{margin-bottom:4px;}.mb-8{margin-bottom:8px;}.mb-12{margin-bottom:12px;}.mb-16{margin-bottom:16px;}
+.text-sm{font-size:12px;}.text-xs{font-size:11px;}.text-muted{color:var(--tt);}
+.font-medium{font-weight:500;}.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.field-label{font-size:11px;color:var(--tt);margin-bottom:4px;}
+.stat-card{background:var(--cs);border-radius:var(--rm);padding:12px 16px;text-align:center;}
+.stat-n{font-size:24px;font-weight:500;margin-bottom:2px;}
+.stat-l{font-size:11px;color:var(--tt);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Test banner -->
+  <div id="test-banner">
+    <i class="ti ti-flask"></i>
+    <strong>測試模式</strong> — 資料僅供測試，正式上線前請聯絡主管切換環境
+    <span id="env-label" style="margin-left:auto;font-size:11px;opacity:.7;"></span>
+  </div>
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <span style="font-weight:500;font-size:15px;">選屋系統</span>
+    <span style="background:#F1EFE8;color:#444;padding:2px 8px;border-radius:8px;font-size:11px;" id="case-label">清水段</span>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+      <div id="google-signin" style="display:none;">
+        <div id="g_id_onload" data-client_id="YOUR_GOOGLE_CLIENT_ID"
+          data-callback="onGoogleSignIn" data-auto_select="true" data-context="signin"></div>
+        <div class="g_id_signin" data-type="standard" data-size="medium" data-theme="outline" data-text="sign_in_with" data-shape="pill"></div>
+      </div>
+      <span id="user-label" style="font-size:11px;color:var(--tt);"></span>
+      <button id="logout-btn" onclick="doLogout()" class="btn-secondary" style="display:none;font-size:12px;padding:4px 10px;">登出</button>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div id="body">
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div style="padding:8px 14px 12px;border-bottom:0.5px solid var(--bt);margin-bottom:6px;">
+        <div class="text-xs text-muted mb-4">選配進度</div>
+        <div class="flex justify-between text-sm mb-4"><span class="text-muted">完成</span><span id="sb-done" style="font-weight:500;color:var(--green-text);">—</span></div>
+        <div class="flex justify-between text-sm mb-4"><span class="text-muted">重複</span><span id="sb-dup" style="font-weight:500;color:var(--red-text);">—</span></div>
+        <div class="flex justify-between text-sm"><span class="text-muted">待回電</span><span id="sb-callback" style="font-weight:500;color:var(--orange-text);">—</span></div>
+      </div>
+      <div class="nav-section">選配作業</div>
+      <div class="nav-item active" id="nav-list" onclick="navTo('list')"><i class="ti ti-clipboard-list"></i>地主清單</div>
+      <div class="nav-item" id="nav-merge" onclick="navTo('merge')"><i class="ti ti-users"></i>合併管理</div>
+      <div class="nav-item" id="nav-lottery" onclick="navTo('lottery')"><i class="ti ti-dice"></i>重複/抽籤</div>
+      <div class="nav-item" id="nav-calls" onclick="navTo('calls')"><i class="ti ti-phone"></i>電話記錄</div>
+      <div class="nav-item" id="nav-announce" onclick="navTo('announce')"><i class="ti ti-speakerphone"></i>公告管理</div>
+      <div class="nav-section">報表</div>
+      <div class="nav-item" id="nav-settle" onclick="navTo('settle')"><i class="ti ti-coin"></i>找補彙總</div>
+      <div class="nav-item" id="nav-export" onclick="doExport()"><i class="ti ti-table-export"></i>匯出報告書</div>
+      <div style="flex:1;"></div>
+      <div style="border-top:0.5px solid var(--bt);padding:6px 6px 0;">
+        <div class="nav-item" id="nav-settings" onclick="navTo('settings')"><i class="ti ti-settings"></i>案件設定</div>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div id="main">
+
+      <!-- ===== LIST VIEW ===== -->
+      <div id="view-list">
+        <!-- Top bar -->
+        <div class="flex items-center gap-8 mb-16" style="flex-wrap:wrap;">
+          <input type="text" id="search" placeholder="搜尋地主姓名 / 編號…"
+            style="width:200px;" oninput="filterOwners()">
+          <button class="btn-secondary text-sm" id="f-all"  onclick="setFilter('')">全部</button>
+          <button class="btn-secondary text-sm" id="f-dup"  onclick="setFilter('dup')"  style="color:var(--red-text);">重複</button>
+          <button class="btn-secondary text-sm" id="f-over" onclick="setFilter('over')" style="color:var(--orange-text);">超選</button>
+          <button class="btn-secondary text-sm" id="f-draft" onclick="setFilter('draft')" style="color:#0C447C;">草稿</button>
+          <button class="btn-secondary text-sm" id="f-mine" onclick="setFilter('mine')">我的</button>
+          <button class="btn-primary" onclick="openOwnerModal(null)" style="margin-left:auto;">
+            <i class="ti ti-plus"></i> 新增地主
+          </button>
+        </div>
+
+        <!-- Stats row -->
+        <div class="grid-2 mb-16" style="grid-template-columns:repeat(4,1fr);">
+          <div class="stat-card"><div class="stat-n" id="st-total" style="color:var(--accent);">—</div><div class="stat-l">地主總數</div></div>
+          <div class="stat-card"><div class="stat-n" id="st-confirmed" style="color:var(--green-text);">—</div><div class="stat-l">正式登錄</div></div>
+          <div class="stat-card"><div class="stat-n" id="st-dup" style="color:var(--red-text);">—</div><div class="stat-l">有重複</div></div>
+          <div class="stat-card"><div class="stat-n" id="st-over" style="color:var(--orange-text);">—</div><div class="stat-l">超過110%</div></div>
+        </div>
+
+        <!-- Table -->
+        <div class="card" style="padding:0;overflow:hidden;">
+          <!-- Table header -->
+          <div style="display:grid;grid-template-columns:60px 1fr 90px 100px 60px 28px;
+            padding:7px 14px;background:var(--cs);gap:8px;border-bottom:0.5px solid var(--bt);">
+            <span class="text-xs text-muted font-medium">編號</span>
+            <span class="text-xs text-muted font-medium">地主</span>
+            <span class="text-xs text-muted font-medium">狀態</span>
+            <span class="text-xs text-muted font-medium">使用率</span>
+            <span class="text-xs text-muted font-medium">負責</span>
+            <span></span>
+          </div>
+          <div id="owner-rows"></div>
+        </div>
+      </div>
+
+      <!-- ===== CALL LOG VIEW ===== -->
+      <div id="view-calls" style="display:none;">
+        <div class="flex items-center justify-between mb-16">
+          <h2 style="font-size:16px;font-weight:500;">電話聯絡記錄</h2>
+          <button class="btn-primary" onclick="openCallModal(null)">
+            <i class="ti ti-phone-plus"></i> 記錄通話
+          </button>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div id="call-rows" style="min-height:200px;"></div>
+        </div>
+      </div>
+
+      <!-- ===== ANNOUNCEMENT VIEW ===== -->
+      <div id="view-announce" style="display:none;">
+        <div class="flex items-center justify-between mb-16">
+          <h2 style="font-size:16px;font-weight:500;">公告管理</h2>
+          <button class="btn-primary" onclick="openAnnounceModal()">
+            <i class="ti ti-plus"></i> 新增公告
+          </button>
+        </div>
+        <div class="text-xs text-muted mb-12">公告會即時顯示在地主查閱頁最上方。重要程度分為通知 / 公告 / 重要三級。</div>
+        <div id="announce-list"></div>
+      </div>
+
+      <!-- ===== OTHER VIEWS placeholder ===== -->
+      <div id="view-merge"    style="display:none;padding:60px;text-align:center;color:var(--tt);">
+        <i class="ti ti-users" style="font-size:40px;display:block;margin-bottom:12px;"></i>
+        <div style="font-size:15px;">合併管理 — Phase 2</div>
+      </div>
+      <div id="view-lottery"  style="display:none;padding:60px;text-align:center;color:var(--tt);">
+        <i class="ti ti-dice" style="font-size:40px;display:block;margin-bottom:12px;"></i>
+        <div style="font-size:15px;">抽籤管理 — Phase 2</div>
+      </div>
+      <div id="view-settle"   style="display:none;padding:60px;text-align:center;color:var(--tt);">
+        <i class="ti ti-coin" style="font-size:40px;display:block;margin-bottom:12px;"></i>
+        <div style="font-size:15px;">找補彙總 — Phase 2</div>
+      </div>
+      <div id="view-settings" style="display:none;">
+        <h2 style="font-size:16px;font-weight:500;margin-bottom:16px;">案件設定</h2>
+        <div class="card" id="settings-content"></div>
+      </div>
+
+    </div><!-- /main -->
+
+    <!-- Detail Panel -->
+    <div id="detail">
+      <div id="detail-content"></div>
+    </div>
+
+  </div><!-- /body -->
+</div><!-- /app -->
+
+<!-- ===== OWNER/SELECTION MODAL ===== -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <div class="flex items-center justify-between mb-16">
+      <h3 id="modal-title" style="font-size:15px;font-weight:500;">新增地主</h3>
+      <button onclick="closeModal()" class="btn-secondary" style="padding:4px 8px;">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  CONFIG — Change before deploy
+// ============================================================
+const API_URL = 'https://script.google.com/macros/s/AKfycbz2oTXAMAVHdMBmtk5y3wJQRQ03Rf5y6AbG5K79wRuIpQIihENevTDRADcTnc99CZ4MPg/exec';
+const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID';
+
+// ============================================================
+//  STATE
+// ============================================================
+let USER = null;  // { email, token }
+let STATE = {
+  owners: [], selections: [], callLog: [],
+  filter: '', search: '', selected_owner_id: null,
+  caseConfig: {},
+};
+
+// ============================================================
+//  AUTH
+// ============================================================
+function onGoogleSignIn(response) {
+  const token = response.credential;
+  const payload = parseJwt(token);
+  USER = { email: payload.email, token };
+  document.getElementById('user-label').textContent = payload.email;
+  document.getElementById('logout-btn').style.display = '';
+  document.getElementById('google-signin').style.display = 'none';
+  loadAll();
+}
+
+function doLogout() {
+  USER = null;
+  document.getElementById('user-label').textContent = '';
+  document.getElementById('logout-btn').style.display = 'none';
+  document.getElementById('google-signin').style.display = '';
+  document.getElementById('owner-rows').innerHTML = '<div style="padding:40px;text-align:center;color:var(--tt);">請先登入</div>';
+}
+
+function parseJwt(token) {
+  const base64 = token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+  return JSON.parse(atob(base64));
+}
+
+function authHeader() {
+  return USER ? { 'Content-Type': 'application/json' } : {};
+}
+
+// ============================================================
+//  API CALLS
+// ============================================================
+async function apiGet(action, params = {}) {
+  const qs = new URLSearchParams({ action, token: USER?.token || '', ...params });
+  const res = await fetch(`${API_URL}?${qs}`);
+  const d = await res.json();
+  if (d.status !== 'ok') throw new Error(d.data?.error || 'API error');
+  return d.data;
+}
+
+async function apiPost(action, body = {}) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, auth: { token: USER?.token, email: USER?.email }, ...body }),
+  });
+  const d = await res.json();
+  if (d.status !== 'ok') throw new Error(d.data?.error || 'API error');
+  return d.data;
+}
+
+// ============================================================
+//  DATA LOADING
+// ============================================================
+async function loadAll() {
+  await loadCaseConfig();
+  await Promise.all([loadOwners(), loadSelections()]);
+  renderOwnerList();
+  updateSidebar();
+}
+
+async function loadCaseConfig() {
+  try {
+    STATE.caseConfig = await apiGet('getCase');
+    const cfg = STATE.caseConfig;
+    document.getElementById('case-label').textContent = cfg.case_name || '清水段';
+    const isTest = cfg.env === 'test';
+    document.getElementById('test-banner').style.display = isTest ? '' : 'none';
+    document.getElementById('env-label').textContent = isTest ? '⚠️ TEST 模式' : '✓ PRODUCTION';
+  } catch(e) { console.error('loadCaseConfig', e); }
+}
+
+async function loadOwners() {
+  try { STATE.owners = await apiGet('getOwners'); }
+  catch(e) { console.error('loadOwners', e); }
+}
+
+async function loadSelections() {
+  try { STATE.selections = await apiGet('getSelections'); }
+  catch(e) { console.error('loadSelections', e); }
+}
+
+async function loadCallLog() {
+  try { STATE.callLog = await apiGet('getCallLog'); }
+  catch(e) { console.error('loadCallLog', e); }
+}
+
+// ============================================================
+//  OWNER LIST RENDERING
+// ============================================================
+function getSelForOwner(ownerId) {
+  return STATE.selections.find(s => s.owner_id == ownerId && s.status !== 'deleted') || null;
+}
+
+function ownerStatus(owner, sel) {
+  if (!sel) return 'none';
+  if (sel.is_over_limit) return 'over';
+  // check duplicate
+  const hasDup = checkDuplicate(sel);
+  if (hasDup) return 'dup';
+  if (sel.status === 'draft') return 'draft';
+  if (sel.status === 'needs_reselect') return 'resel';
+  return 'ok';
+}
+
+function checkDuplicate(sel) {
+  const myUnits = Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos || '[]');
+  const myParks = Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos || '[]');
+  for (const s of STATE.selections) {
+    if (s.sel_id === sel.sel_id || s.status === 'deleted') continue;
+    const otherUnits = Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos || '[]');
+    const otherParks = Array.isArray(s.parking_nos) ? s.parking_nos : JSON.parse(s.parking_nos || '[]');
+    if (myUnits.some(u => otherUnits.includes(u))) return true;
+    if (myParks.some(p => otherParks.includes(p))) return true;
+  }
+  return false;
+}
+
+function setFilter(f) {
+  STATE.filter = f;
+  document.querySelectorAll('[id^=f-]').forEach(b => {
+    b.style.background = '';
+    b.style.fontWeight = '';
+  });
+  const active = document.getElementById('f-' + (f || 'all'));
+  if (active) { active.style.background = 'var(--cs)'; active.style.fontWeight = '500'; }
+  renderOwnerList();
+}
+
+function filterOwners() {
+  STATE.search = document.getElementById('search').value;
+  renderOwnerList();
+}
+
+function renderOwnerList() {
+  const q = STATE.search.toLowerCase();
+  const f = STATE.filter;
+
+  let list = STATE.owners.filter(o => {
+    if (q && !o.name?.toLowerCase().includes(q) && !String(o.serial_no||'').includes(q)) return false;
+    const sel = getSelForOwner(o.owner_id);
+    const st  = ownerStatus(o, sel);
+    if (f === 'dup'   && st !== 'dup')   return false;
+    if (f === 'over'  && st !== 'over')  return false;
+    if (f === 'draft' && st !== 'draft') return false;
+    if (f === 'mine'  && o.handler !== USER?.email?.split('@')[0]) return false;
+    return true;
+  });
+
+  // Stats
+  const all  = STATE.owners;
+  const sels = STATE.selections.filter(s => s.status !== 'deleted');
+  document.getElementById('st-total').textContent     = all.length;
+  document.getElementById('st-confirmed').textContent = sels.filter(s => s.status === 'confirmed').length;
+  document.getElementById('st-dup').textContent       = sels.filter(s => checkDuplicate(s)).length;
+  document.getElementById('st-over').textContent      = sels.filter(s => s.is_over_limit).length;
+
+  const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft' };
+  const stLabel = { ok:'正式', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未登記' };
+
+  const rows = list.map(o => {
+    const sel = getSelForOwner(o.owner_id);
+    const st  = ownerStatus(o, sel);
+    const limit = Number(o.upper_limit) || 0;
+    const total = sel ? (Number(sel.total_value) || 0) : 0;
+    const pct   = limit > 0 ? Math.min(100, Math.round(total / limit * 100)) : 0;
+    const barColor = total > limit ? 'var(--red)' : pct > 90 ? 'var(--orange)' : 'var(--green)';
+    const isActive = STATE.selected_owner_id == o.owner_id;
+
+    return `<div style="display:grid;grid-template-columns:60px 1fr 90px 100px 60px 28px;
+      align-items:center;padding:9px 14px;border-bottom:0.5px solid var(--bt);
+      cursor:pointer;gap:8px;${isActive?'background:#EDF5FB;':''}"
+      onclick="selectOwner('${o.owner_id}')" class="owner-row">
+      <div style="font-size:12px;color:var(--tt);">${o.serial_no||''}</div>
+      <div>
+        <div style="font-weight:500;">${o.name||''}</div>
+        <div class="text-xs text-muted">${o.phone||''}</div>
+      </div>
+      <div><span class="badge ${stMap[st]||''}">${stLabel[st]||st}</span></div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div class="pbar-bg" style="flex:1;"><div class="pbar-fill" style="width:${pct}%;background:${barColor};"></div></div>
+        <span class="text-xs text-muted">${pct}%</span>
+      </div>
+      <div class="text-xs text-muted">${o.handler||''}</div>
+      <div><i class="ti ti-chevron-right" style="color:var(--tt);"></i></div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('owner-rows').innerHTML = rows ||
+    '<div style="padding:40px;text-align:center;color:var(--tt);">無符合條件的地主</div>';
+  updateSidebar();
+}
+
+// ============================================================
+//  OWNER DETAIL PANEL
+// ============================================================
+function selectOwner(ownerId) {
+  STATE.selected_owner_id = ownerId;
+  renderOwnerList();  // highlight row
+  renderOwnerDetail(ownerId);
+  document.getElementById('detail').style.display = 'block';
+}
+
+function renderOwnerDetail(ownerId) {
+  const owner = STATE.owners.find(o => o.owner_id == ownerId);
+  const sel   = getSelForOwner(ownerId);
+  if (!owner) return;
+
+  const rights = Number(owner.rights_value) || 0;
+  const limit  = Number(owner.upper_limit) || 0;
+  const total  = sel ? (Number(sel.total_value) || 0) : 0;
+  const settle = total - rights;
+  const pct    = limit > 0 ? Math.min(100, Math.round(total / limit * 100)) : 0;
+  const st     = ownerStatus(owner, sel);
+  const barColor = total > limit ? 'var(--red)' : pct > 90 ? 'var(--orange)' : 'var(--green)';
+
+  const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft' };
+  const stLabel = { ok:'正式', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未登記' };
+
+  const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
+  const parkNos = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
+
+  // Warning banners
+  let warn = '';
+  if (st === 'dup')   warn = `<div style="background:var(--red-bg);border:0.5px solid var(--red);border-radius:var(--rm);padding:8px 10px;font-size:11px;color:var(--red-text);margin-bottom:10px;"><i class="ti ti-alert-circle"></i> 選配戶別或車位有重複，需抽籤</div>`;
+  if (st === 'over')  warn = `<div style="background:var(--orange-bg);border:0.5px solid var(--orange);border-radius:var(--rm);padding:8px 10px;font-size:11px;color:var(--orange-text);margin-bottom:10px;"><i class="ti ti-alert-triangle"></i> 超選 NT$${fmt(total - limit)}</div>`;
+  if (st === 'resel') warn = `<div style="background:var(--accent-bg);border:0.5px solid var(--accent);border-radius:var(--rm);padding:8px 10px;font-size:11px;color:var(--accent-text);margin-bottom:10px;"><i class="ti ti-refresh"></i> 抽籤落選，需重新選配</div>`;
+
+  const unitRows = unitNos.map(u => `<div class="flex justify-between text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);">
+    <span style="font-weight:500;">🏠 ${u}</span>
+  </div>`).join('') || '<div class="text-xs text-muted" style="padding:4px 0;">未選擇戶別</div>';
+
+  const parkRows = parkNos.map(p => `<div class="flex justify-between text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);">
+    <span>🚗 ${p}</span>
+  </div>`).join('') || '<div class="text-xs text-muted" style="padding:4px 0;">未選擇車位</div>';
+
+  document.getElementById('detail-content').innerHTML = `
+    <div class="flex items-center justify-between mb-12">
+      <div>
+        <div style="font-size:16px;font-weight:500;">${owner.name||''}</div>
+        <div class="text-xs text-muted mt-1">編號 ${owner.serial_no||''} · ${owner.handler||''}</div>
+      </div>
+      <div class="flex gap-6 items-center">
+        <span class="badge ${stMap[st]||''}">${stLabel[st]||''}</span>
+        <button onclick="document.getElementById('detail').style.display='none'" class="btn-secondary" style="padding:3px 7px;">✕</button>
+      </div>
+    </div>
+
+    ${warn}
+
+    <div class="mb-12">
+      <div class="text-xs text-muted mb-4">選配使用率</div>
+      <div class="flex items-center gap-6 mb-4">
+        <div class="pbar-bg" style="flex:1;height:8px;"><div class="pbar-fill" style="width:${pct}%;background:${barColor};height:8px;"></div></div>
+        <span style="font-size:13px;font-weight:500;">${pct}%</span>
+      </div>
+      <div class="flex justify-between text-xs text-muted">
+        <span>已選 NT$${fmt(total)}</span><span>上限 NT$${fmt(limit)}</span>
+      </div>
+    </div>
+
+    <div class="mb-12">
+      <div class="text-xs text-muted mb-4">找補</div>
+      <div style="font-size:14px;font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
+        ${settle>0?'需補差 NT$'+fmt(settle):settle<0?'退款 NT$'+fmt(-settle):'無需找補'}
+      </div>
+    </div>
+
+    <div class="text-xs text-muted mb-4">選配內容</div>
+    ${unitRows}${parkRows}
+
+    <div class="flex gap-6 mt-12">
+      <button class="btn-secondary flex-1" onclick="openSelectionModal('${ownerId}')">
+        <i class="ti ti-pencil"></i> ${sel ? '改選' : '選配'}
+      </button>
+      ${sel?.status==='draft' ? `<button class="btn-success flex-1" onclick="confirmSelection('${ownerId}')">
+        <i class="ti ti-check"></i> 正式登錄
+      </button>` : ''}
+    </div>
+    <div class="flex gap-6 mt-6">
+      <button class="btn-secondary flex-1" style="font-size:12px;" onclick="openCallModal('${ownerId}')">
+        <i class="ti ti-phone"></i> 記錄通話
+      </button>
+      <button class="btn-secondary flex-1" style="font-size:12px;" onclick="openUploadModal('${ownerId}')">
+        <i class="ti ti-upload"></i> 上傳文件
+      </button>
+    </div>
+  `;
+}
+
+// ============================================================
+//  SELECTION MODAL
+// ============================================================
+function openSelectionModal(ownerId) {
+  const owner = STATE.owners.find(o => o.owner_id == ownerId);
+  const sel   = getSelForOwner(ownerId);
+  const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
+  const parkNos = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
+
+  document.getElementById('modal-title').textContent = (sel ? '改選' : '新增選配') + ' — ' + (owner?.name||'');
+  document.getElementById('modal-body').innerHTML = `
+    <div class="grid-2 mb-12">
+      <div><div class="field-label">地主</div><input type="text" value="${owner?.name||''}" disabled></div>
+      <div><div class="field-label">選配上限</div><input type="text" value="NT$${fmt(owner?.upper_limit||0)}" disabled></div>
+    </div>
+    <div class="mb-12">
+      <div class="field-label">已選戶別（逗號分隔，如 5F-A1,5F-A2）</div>
+      <input type="text" id="sel-units" value="${unitNos.join(',')}" placeholder="戶別代號，例：18F-A5">
+    </div>
+    <div class="mb-12">
+      <div class="field-label">已選車位（逗號分隔）</div>
+      <input type="text" id="sel-parks" value="${parkNos.join(',')}" placeholder="車位代號，例：B2-196">
+    </div>
+    <div class="mb-12" id="sel-preview-area"></div>
+    <div class="mb-12">
+      <div class="field-label">選配單日期</div>
+      <input type="date" id="sel-date" value="${sel?.form_date?.slice(0,10)||''}">
+    </div>
+    <div class="mb-12">
+      <div class="field-label">修改原因（正式登錄必填）</div>
+      <textarea id="sel-reason" rows="2" placeholder="例：地主現場到訪選定 / 電話確認改選原因"></textarea>
+    </div>
+    <div id="sel-validation" style="margin-bottom:10px;"></div>
+    <div class="flex gap-8">
+      <button class="btn-secondary flex-1" onclick="previewSelection('${ownerId}')"><i class="ti ti-calculator"></i> 試算</button>
+      <button class="btn-secondary flex-1" onclick="submitSelection('${ownerId}','draft')">存草稿</button>
+      <button class="btn-success flex-1" onclick="submitSelection('${ownerId}','confirmed')"><i class="ti ti-check"></i> 正式登錄</button>
+    </div>
+  `;
+  openModal();
+}
+
+function previewSelection(ownerId) {
+  const owner  = STATE.owners.find(o => o.owner_id == ownerId);
+  const units  = document.getElementById('sel-units').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const parks  = document.getElementById('sel-parks').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const rights = Number(owner?.rights_value)||0;
+  const limit  = Number(owner?.upper_limit)||0;
+
+  // Simple validation + calc
+  let total = 0;
+  document.getElementById('sel-validation').innerHTML = '<div class="text-xs text-muted">試算中…</div>';
+  apiGet('getUnits').then(unitMap => {
+    apiGet('getParking').then(parkMap => {
+      let errs = [];
+      units.forEach(u => {
+        if (!unitMap[u]) errs.push(`戶別 ${u} 不存在`);
+        else total += unitMap[u].total_value;
+      });
+      parks.forEach(p => {
+        if (!parkMap[p]) errs.push(`車位 ${p} 不存在`);
+        else total += parkMap[p].price;
+      });
+      const settle = total - rights;
+      const over   = total > limit;
+      let html = '';
+      if (errs.length) {
+        html = `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;">${errs.join('<br>')}</div>`;
+      } else {
+        html = `<div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;font-size:12px;">
+          <div class="flex justify-between mb-4"><span class="text-muted">總選配價值</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
+          <div class="flex justify-between mb-4"><span class="text-muted">選配上限</span><span>NT$${fmt(limit)}</span></div>
+          <div class="flex justify-between mb-4"><span class="text-muted">找補</span>
+            <span style="font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
+              ${settle>0?'繳 NT$'+fmt(settle):settle<0?'領 NT$'+fmt(-settle):'零'}
+            </span>
+          </div>
+          ${over?`<div style="background:var(--orange-bg);color:var(--orange-text);padding:4px 8px;border-radius:4px;font-size:11px;"><i class="ti ti-alert-triangle"></i> 超過 110% 上限</div>`:''}
+        </div>`;
+      }
+      document.getElementById('sel-validation').innerHTML = html;
+    });
+  });
+}
+
+async function submitSelection(ownerId, status) {
+  const units  = document.getElementById('sel-units').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const parks  = document.getElementById('sel-parks').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const date   = document.getElementById('sel-date').value;
+  const reason = document.getElementById('sel-reason').value;
+
+  if (status === 'confirmed' && !reason) {
+    alert('正式登錄需填寫修改原因');
+    return;
+  }
+
+  try {
+    await apiPost('saveSelection', {
+      owner_id: ownerId, unit_nos: units, parking_nos: parks,
+      status, form_date: date, change_reason: reason,
+    });
+    closeModal();
+    await loadSelections();
+    renderOwnerList();
+    renderOwnerDetail(ownerId);
+  } catch(e) { alert('儲存失敗：' + e.message); }
+}
+
+async function confirmSelection(ownerId) {
+  const reason = prompt('請輸入正式登錄原因：');
+  if (!reason) return;
+  try {
+    const sel = getSelForOwner(ownerId);
+    const units = Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]');
+    const parks = Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]');
+    await apiPost('saveSelection', {
+      owner_id: ownerId, unit_nos: units, parking_nos: parks,
+      status: 'confirmed', form_date: sel.form_date, change_reason: reason,
+    });
+    await loadSelections();
+    renderOwnerList();
+    renderOwnerDetail(ownerId);
+  } catch(e) { alert('失敗：' + e.message); }
+}
+
+// ============================================================
+//  OWNER MODAL (新增/編輯地主)
+// ============================================================
+function openOwnerModal(ownerId) {
+  const owner = ownerId ? STATE.owners.find(o => o.owner_id == ownerId) : null;
+  document.getElementById('modal-title').textContent = owner ? '編輯地主' : '新增地主';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="grid-2 mb-12">
+      <div><div class="field-label">編號（流水號）</div><input type="text" id="o-serial" value="${owner?.serial_no||''}"></div>
+      <div><div class="field-label">姓名 *</div><input type="text" id="o-name" value="${owner?.name||''}"></div>
+    </div>
+    <div class="grid-2 mb-12">
+      <div><div class="field-label">連絡電話</div><input type="text" id="o-phone" value="${owner?.phone||''}"></div>
+      <div><div class="field-label">建物門牌</div><input type="text" id="o-address" value="${owner?.address||''}"></div>
+    </div>
+    <div class="grid-2 mb-12">
+      <div><div class="field-label">更新後可分配權利價值（元）</div><input type="number" id="o-rights" value="${owner?.rights_value||''}"></div>
+      <div><div class="field-label">負責人</div><input type="text" id="o-handler" value="${owner?.handler||''}"></div>
+    </div>
+    <div class="mb-12">
+      <div class="field-label">身分證字號（僅儲存雜湊，不保留明碼）</div>
+      <input type="text" id="o-id" placeholder="${owner ? '•••••••••• （留空不變更）' : 'A123456789'}" maxlength="10">
+    </div>
+    <div class="mb-16">
+      <div class="field-label">是否繳交同意書</div>
+      <select id="o-consent">
+        <option value="true" ${owner?.consent_submitted=='true'?'selected':''}>是</option>
+        <option value="false" ${owner?.consent_submitted!='true'?'selected':''}>否</option>
+      </select>
+    </div>
+    <div class="flex gap-8 justify-between">
+      <button class="btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="submitOwner('${ownerId||''}')">儲存</button>
+    </div>
+  `;
+  openModal();
+}
+
+async function submitOwner(ownerId) {
+  const data = {
+    serial_no:         document.getElementById('o-serial').value,
+    name:              document.getElementById('o-name').value,
+    phone:             document.getElementById('o-phone').value,
+    address:           document.getElementById('o-address').value,
+    rights_value:      Number(document.getElementById('o-rights').value),
+    handler:           document.getElementById('o-handler').value,
+    consent_submitted: document.getElementById('o-consent').value,
+  };
+  const idVal = document.getElementById('o-id').value;
+  if (idVal) data.id_number = idVal;
+  if (ownerId) data.owner_id = ownerId;
+  if (!data.name) { alert('姓名為必填'); return; }
+  try {
+    await apiPost('saveOwner', data);
+    closeModal();
+    await loadOwners();
+    renderOwnerList();
+  } catch(e) { alert('儲存失敗：' + e.message); }
+}
+
+// ============================================================
+//  CALL LOG MODAL
+// ============================================================
+function openCallModal(ownerId) {
+  const owner = ownerId ? STATE.owners.find(o => o.owner_id == ownerId) : null;
+  document.getElementById('modal-title').textContent = '記錄通話' + (owner ? ' — ' + owner.name : '');
+  const now = new Date().toISOString().slice(0,16);
+  document.getElementById('modal-body').innerHTML = `
+    ${!owner ? `<div class="mb-12"><div class="field-label">地主</div>
+      <select id="c-owner">
+        <option value="">選擇地主…</option>
+        ${STATE.owners.map(o => `<option value="${o.owner_id}">${o.name}</option>`).join('')}
+      </select></div>` : `<input type="hidden" id="c-owner" value="${ownerId}">`}
+    <div class="grid-2 mb-12">
+      <div><div class="field-label">通話類型</div>
+        <select id="c-type">
+          <option>去電</option><option>來電</option><option>未接</option><option>漏接</option>
+        </select>
+      </div>
+      <div><div class="field-label">通話時間</div><input type="datetime-local" id="c-time" value="${now}"></div>
+    </div>
+    <div class="mb-12">
+      <div class="field-label">通話內容備註</div>
+      <textarea id="c-notes" rows="3" placeholder="通話摘要、地主反應、後續處理…"></textarea>
+    </div>
+    <div class="mb-16">
+      <div class="field-label">後續狀態</div>
+      <select id="c-status">
+        <option>已處理</option><option>待回電</option><option>結案</option>
+      </select>
+    </div>
+    <div class="flex gap-8 justify-between">
+      <button class="btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="submitCallLog()">儲存紀錄</button>
+    </div>
+  `;
+  openModal();
+}
+
+async function submitCallLog() {
+  const ownerId = document.getElementById('c-owner').value;
+  const owner   = STATE.owners.find(o => o.owner_id == ownerId);
+  try {
+    await apiPost('addCallLog', {
+      owner_id:        ownerId,
+      owner_name:      owner?.name || '',
+      call_type:       document.getElementById('c-type').value,
+      call_time:       document.getElementById('c-time').value,
+      notes:           document.getElementById('c-notes').value,
+      callback_status: document.getElementById('c-status').value,
+    });
+    closeModal();
+  } catch(e) { alert('儲存失敗：' + e.message); }
+}
+
+// ============================================================
+//  UPLOAD MODAL
+// ============================================================
+function openUploadModal(ownerId) {
+  const owner = STATE.owners.find(o => o.owner_id == ownerId);
+  document.getElementById('modal-title').textContent = '上傳文件 — ' + (owner?.name||'');
+  document.getElementById('modal-body').innerHTML = `
+    <div class="mb-12">
+      <div class="field-label">文件類型</div>
+      <select id="u-type">
+        <option>選配確認書</option><option>委託書</option><option>同意書</option><option>其他</option>
+      </select>
+    </div>
+    <div class="mb-16">
+      <div class="field-label">選擇檔案</div>
+      <input type="file" id="u-file" accept=".pdf,.jpg,.jpeg,.png" style="background:none;border:none;padding:0;">
+      <div class="text-xs text-muted mt-4">
+        上傳後自動更名為：清水段_${owner?.serial_no||''}_${owner?.name||''}_[類型]_[日期].pdf
+      </div>
+    </div>
+    <div id="upload-status"></div>
+    <div class="flex gap-8 justify-between">
+      <button class="btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="submitUpload('${ownerId}')">上傳至 Google Drive</button>
+    </div>
+  `;
+  openModal();
+}
+
+async function submitUpload(ownerId) {
+  const owner  = STATE.owners.find(o => o.owner_id == ownerId);
+  const file   = document.getElementById('u-file').files[0];
+  const dtype  = document.getElementById('u-type').value;
+  if (!file) { alert('請選擇檔案'); return; }
+
+  document.getElementById('upload-status').innerHTML = '<div class="text-sm text-muted">上傳中…</div>';
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result.split(',')[1];
+    try {
+      const res = await apiPost('uploadDoc', {
+        owner_id:   ownerId,
+        owner_name: owner?.name || '',
+        doc_type:   dtype,
+        file_base64: base64,
+        file_name:  file.name,
+        mime_type:  file.type,
+      });
+      document.getElementById('upload-status').innerHTML =
+        `<div style="background:var(--green-bg);color:var(--green-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;">
+          ✓ 上傳成功：${res.file_name}
+          <a href="${res.url}" target="_blank" style="color:var(--green-text);margin-left:6px;">開啟 →</a>
+        </div>`;
+    } catch(ex) {
+      document.getElementById('upload-status').innerHTML =
+        `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;">上傳失敗：${ex.message}</div>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// ============================================================
+//  EXPORT
+// ============================================================
+async function doExport() {
+  try {
+    const data = await apiGet('export');
+    const records = data.records || [];
+    if (!records.length) { alert('無資料可匯出'); return; }
+
+    // Build CSV
+    const headers = Object.keys(records[0]);
+    const csv = [
+      headers.join(','),
+      ...records.map(r => headers.map(h => `"${String(r[h]||'').replace(/"/g,'""')}"`).join(','))
+    ].join('\n');
+
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `清水段_選屋登記總表_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { alert('匯出失敗：' + e.message); }
+}
+
+// ============================================================
+//  NAVIGATION
+// ============================================================
+function navTo(view) {
+  ['list','merge','lottery','calls','announce','settle','settings'].forEach(v => {
+    const el = document.getElementById('view-'+v);
+    if (el) el.style.display = v === view ? '' : 'none';
+    const nav = document.getElementById('nav-'+v);
+    if (nav) nav.classList.toggle('active', v === view);
+  });
+  if (view === 'calls') loadCallLog().then(renderCallLog);
+  if (view === 'announce') loadAnnounceList();
+}
+
+function renderCallLog() {
+  const rows = STATE.callLog.map(c => `
+    <div style="display:grid;grid-template-columns:80px 80px 1fr 80px 100px;align-items:center;
+      padding:9px 14px;border-bottom:0.5px solid var(--bt);gap:8px;">
+      <div class="text-xs text-muted">${String(c.call_time||'').slice(0,10)}</div>
+      <div style="font-size:12px;">${c.owner_name||''}</div>
+      <div style="font-size:12px;color:var(--ts);">${c.notes||''}</div>
+      <div><span class="badge ${c.call_type==='來電'?'badge-ok':'badge-draft'}">${c.call_type||''}</span></div>
+      <div><span class="badge ${c.callback_status==='待回電'?'badge-over':'badge-ok'}">${c.callback_status||''}</span></div>
+    </div>`).join('') || '<div style="padding:40px;text-align:center;color:var(--tt);">無通話記錄</div>';
+
+  // Header
+  document.getElementById('call-rows').innerHTML = `
+    <div style="display:grid;grid-template-columns:80px 80px 1fr 80px 100px;
+      padding:6px 14px;background:var(--cs);gap:8px;border-bottom:0.5px solid var(--bt);">
+      ${['時間','地主','備註','類型','狀態'].map(h => `<span class="text-xs text-muted font-medium">${h}</span>`).join('')}
+    </div>
+    ${rows}`;
+}
+
+// ============================================================
+//  ANNOUNCEMENT MANAGEMENT
+// ============================================================
+const ANN_LEVELS = {
+  info:      { label:'通知', color:'var(--brand-text)', bg:'var(--brand-bg)' },
+  important: { label:'公告', color:'#633806', bg:'#FAEEDA' },
+  urgent:    { label:'重要', color:'#791F1F', bg:'#FCEBEB' },
+};
+
+async function loadAnnounceList() {
+  const list = await apiGet('getAnnouncements');
+  const el = document.getElementById('announce-list');
+  if (!list || !list.length) {
+    el.innerHTML = '<div class="card" style="text-align:center;color:var(--tt);padding:40px;">目前沒有公告</div>';
+    return;
+  }
+  el.innerHTML = list.map(a => {
+    const lv = ANN_LEVELS[a.level] || ANN_LEVELS.info;
+    return `<div class="card mb-8" style="display:flex;align-items:flex-start;gap:12px;">
+      <span style="font-size:11px;font-weight:600;color:${lv.color};background:${lv.bg};
+        padding:3px 9px;border-radius:8px;white-space:nowrap;flex-shrink:0;">${lv.label}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:500;color:var(--tp);">${a.title||''}</div>
+        ${a.content?`<div class="text-sm text-muted" style="margin-top:3px;line-height:1.5;">${a.content}</div>`:''}
+        <div class="text-xs text-muted" style="margin-top:4px;">${a.date||''}</div>
+      </div>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:12px;flex-shrink:0;"
+        onclick="deleteAnnounce('${a.ann_id}')"><i class="ti ti-trash"></i></button>
+    </div>`;
+  }).join('');
+}
+
+function openAnnounceModal() {
+  document.getElementById('modal-title').textContent = '新增公告';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="mb-12">
+      <div class="field-label">重要程度</div>
+      <select id="ann-level">
+        <option value="info">通知（藍灰）</option>
+        <option value="important" selected>公告（橘）</option>
+        <option value="urgent">重要（紅）</option>
+      </select>
+    </div>
+    <div class="mb-12">
+      <div class="field-label">標題 *</div>
+      <input type="text" id="ann-title" placeholder="例：選屋截止日延長通知">
+    </div>
+    <div class="mb-12">
+      <div class="field-label">內容（可空白）</div>
+      <textarea id="ann-content" rows="3" placeholder="詳細說明…"></textarea>
+    </div>
+    <div class="mb-16">
+      <div class="field-label">日期</div>
+      <input type="date" id="ann-date" value="${new Date().toISOString().slice(0,10)}">
+    </div>
+    <div class="flex gap-8 justify-between">
+      <button class="btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="submitAnnounce()">發布公告</button>
+    </div>
+  `;
+  openModal();
+}
+
+async function submitAnnounce() {
+  const title = document.getElementById('ann-title').value.trim();
+  if (!title) { alert('標題為必填'); return; }
+  try {
+    await apiPost('addAnnouncement', {
+      level:   document.getElementById('ann-level').value,
+      title,
+      content: document.getElementById('ann-content').value,
+      date:    document.getElementById('ann-date').value,
+    });
+    closeModal();
+    loadAnnounceList();
+  } catch(e) { alert('發布失敗：' + e.message); }
+}
+
+async function deleteAnnounce(annId) {
+  if (!confirm('確定刪除這則公告？')) return;
+  try {
+    await apiPost('deleteAnnouncement', { ann_id: annId });
+    loadAnnounceList();
+  } catch(e) { alert('刪除失敗：' + e.message); }
+}
+
+// ============================================================
+//  SIDEBAR STATS
+// ============================================================
+function updateSidebar() {
+  const sels  = STATE.selections.filter(s => s.status !== 'deleted');
+  const dups  = sels.filter(s => checkDuplicate(s)).length;
+  const done  = sels.filter(s => s.status === 'confirmed').length;
+  const total = STATE.owners.length;
+  document.getElementById('sb-done').textContent  = `${done} / ${total}`;
+  document.getElementById('sb-dup').textContent   = dups;
+  document.getElementById('sb-callback').textContent = '—'; // from call log
+}
+
+// ============================================================
+//  MODAL HELPERS
+// ============================================================
+function openModal()  { document.getElementById('modal-overlay').classList.add('open'); }
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+// ============================================================
+//  UTILS
+// ============================================================
+function fmt(n) { return Math.round(n||0).toLocaleString('zh-TW'); }
+
+// ============================================================
+//  INIT
+// ============================================================
+window.onload = function() {
+  // In real deployment this will auto-sign in via Google
+  // For local testing, we show a sign-in button
+  document.getElementById('google-signin').style.display = '';
+  loadCaseConfig(); // Load case info even before auth
+};
+</script>
+</body>
+</html>

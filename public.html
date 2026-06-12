@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>清水段都更 · 地主選屋資訊平台</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{
+  --cp:#fff;--cs:#f6f5f0;--ct:#eeede8;
+  --tp:#1a1a18;--ts:#6b6a64;--tt:#9c9a92;
+  --bt:rgba(0,0,0,.12);--bs:rgba(0,0,0,.28);
+  --rm:8px;--rl:12px;
+  /* 漢皇品牌色 */
+  --brand:#748B97;--brand-dark:#5C7280;--brand-light:#E7ECEF;--brand-text:#3D4F58;
+  --warm:#D8D3C9;--warm-bg:#F0EDE7;
+  --green:#1D9E75;--green-bg:#E1F5EE;--green-text:#085041;
+  --red:#E24B4A;--red-bg:#FCEBEB;--red-text:#791F1F;
+  --orange:#EF9F27;--orange-bg:#FAEEDA;--orange-text:#633806;
+}
+@media(prefers-color-scheme:dark){
+  :root{--cp:#1c1c1a;--cs:#242422;--ct:#2e2e2c;--tp:#e8e6de;--ts:#9c9a92;--tt:#6b6a64;
+    --bt:rgba(255,255,255,.12);--bs:rgba(255,255,255,.28);
+    --brand:#8DA3AE;--brand-light:#2A363C;--brand-text:#A9BCC5;}
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans TC',sans-serif;
+  background:var(--ct);font-size:13px;color:var(--tp);min-height:100vh;}
+input,button,select{font-family:inherit;font-size:13px;color:var(--tp);outline:none;}
+input{background:var(--cp);border:0.5px solid var(--bs);border-radius:var(--rm);padding:8px 12px;width:100%;}
+input:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(29,158,117,.12);}
+button{cursor:pointer;border-radius:var(--rm);padding:8px 16px;border:none;}
+.container{max-width:900px;margin:0 auto;padding:0 16px;}
+
+/* Test banner */
+#test-banner{background:var(--orange-bg);border-bottom:1px solid var(--orange);
+  padding:8px 0;font-size:12px;color:var(--orange-text);text-align:center;display:none;}
+
+/* Header */
+.page-header{background:var(--cp);border-bottom:2px solid var(--brand);padding:16px 0;margin-bottom:24px;}
+.page-header .container{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;
+  padding:3px 8px;border-radius:10px;}
+
+/* Stats */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}
+@media(max-width:600px){.stats-row{grid-template-columns:repeat(2,1fr);}}
+.stat-card{background:var(--cp);border:0.5px solid var(--bt);border-radius:var(--rl);
+  padding:12px 16px;text-align:center;}
+.stat-n{font-size:22px;font-weight:500;margin-bottom:2px;}
+.stat-l{font-size:11px;color:var(--tt);}
+
+/* Tabs */
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+.tab{padding:7px 14px;border-radius:var(--rm);border:0.5px solid var(--bs);
+  background:var(--cp);color:var(--ts);cursor:pointer;font-size:13px;}
+.tab.active{background:var(--cs);color:var(--tp);font-weight:500;}
+
+/* Floor grid */
+.floor-cell{width:44px;height:30px;border-radius:3px;display:inline-flex;align-items:center;
+  justify-content:center;font-size:9.5px;font-weight:600;cursor:pointer;
+  border:0.5px solid var(--bt);margin:1px;transition:opacity .12s,transform .1s;}
+.floor-cell:hover{opacity:.8;transform:scale(1.05);}
+.fc-empty{background:var(--cs);}
+.fc-sel{background:var(--green-bg);border-color:#9FE1CB;color:var(--green-text);}
+.fc-dup{background:var(--red-bg);border-color:#F09595;color:var(--red-text);}
+
+/* Parking cells — show number */
+.park-cell{min-width:42px;height:30px;padding:0 4px;border-radius:4px;
+  display:inline-flex;align-items:center;justify-content:center;gap:2px;
+  font-size:11px;font-weight:600;cursor:pointer;border:0.5px solid var(--bt);
+  transition:opacity .12s,transform .1s;position:relative;}
+.park-cell:hover{opacity:.82;transform:scale(1.06);z-index:2;}
+.pc-empty{background:var(--cs);color:var(--ts);font-weight:500;}
+.pc-sel{background:var(--green-bg);border-color:#9FE1CB;color:var(--green-text);}
+.pc-dup{background:var(--red-bg);border-color:#F09595;color:var(--red-text);}
+.pc-badge{background:var(--red);color:#fff;font-size:8px;font-weight:700;
+  border-radius:7px;padding:0 4px;line-height:1.4;}
+
+/* Documents */
+.doc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:24px;}
+@media(max-width:500px){.doc-grid{grid-template-columns:1fr;}}
+.doc-card{background:var(--cp);border:0.5px solid var(--bt);border-radius:var(--rm);
+  padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;
+  text-decoration:none;color:inherit;}
+.doc-card:hover{background:var(--cs);}
+.doc-icon{width:36px;height:36px;border-radius:var(--rm);display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;font-size:18px;}
+
+/* Timeline */
+.timeline{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-bottom:24px;
+  background:var(--cp);border:0.5px solid var(--bt);border-radius:var(--rl);padding:16px;}
+.tl-step{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:70px;}
+.tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;}
+.tl-line{flex:1;height:2px;min-width:16px;}
+.tl-label{font-size:10px;text-align:center;line-height:1.3;}
+
+/* Verify section */
+.verify-box{background:var(--cp);border:0.5px solid var(--bt);border-radius:var(--rl);
+  padding:20px;margin-bottom:24px;}
+.result-card{background:var(--cp);border:1.5px solid #9FE1CB;border-radius:var(--rl);
+  padding:16px;margin-top:12px;}
+
+/* Unit detail panel */
+#unit-panel{display:none;width:240px;border-left:0.5px solid var(--bt);
+  background:var(--cp);overflow-y:auto;padding:14px;flex-shrink:0;}
+
+/* Duplicate notice */
+.dup-notice{background:var(--red-bg);border:0.5px solid #F09595;border-radius:var(--rl);
+  padding:12px 16px;margin-bottom:16px;}
+
+.card{background:var(--cp);border:0.5px solid var(--bt);border-radius:var(--rl);padding:16px;}
+.field-label{font-size:11px;color:var(--tt);margin-bottom:4px;}
+.text-muted{color:var(--tt);}
+.text-sm{font-size:12px;}
+.text-xs{font-size:11px;}
+.font-medium{font-weight:500;}
+.flex{display:flex;}.gap-6{gap:6px;}.gap-8{gap:8px;}
+.items-center{align-items:center;}.justify-between{justify-content:space-between;}
+.mb-8{margin-bottom:8px;}.mb-12{margin-bottom:12px;}.mb-16{margin-bottom:16px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+</style>
+</head>
+<body>
+
+<!-- Test banner -->
+<div id="test-banner">
+  ⚠️ 測試頁面 — 資料僅供測試，非正式選屋結果
+</div>
+
+<!-- Header -->
+<div class="page-header">
+  <div class="container">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <!-- 漢皇 Logo -->
+      <img src="data:image/png;base64,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" alt="漢皇集團" style="height:42px;width:auto;flex-shrink:0;">
+      <div>
+        <div style="font-size:12px;color:var(--brand-text);margin-bottom:4px;letter-spacing:.02em;">新北市永和區 · 都市更新事業計畫</div>
+        <div style="font-size:20px;font-weight:500;color:var(--tp);">清水段都更 · 地主選屋資訊平台</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <span class="badge" id="status-badge" style="background:var(--orange-bg);color:var(--orange-text);">
+        <i class="ti ti-clock"></i> 載入中
+      </span>
+      <span class="badge" id="countdown-badge" style="background:var(--cs);color:var(--ts);">
+        <i class="ti ti-calendar"></i> —
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- 公告欄（最上方顯眼處） -->
+  <div id="announcement-area"></div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-n" style="color:var(--brand-text);" id="s-units">328</div><div class="stat-l">可選戶別</div></div>
+    <div class="stat-card"><div class="stat-n" style="color:var(--brand);" id="s-parking">264</div><div class="stat-l">車位</div></div>
+    <div class="stat-card"><div class="stat-n" id="s-selected" style="color:var(--orange-text);">—</div><div class="stat-l">已選配</div></div>
+    <div class="stat-card"><div class="stat-n" id="s-dup" style="color:var(--red-text);">—</div><div class="stat-l">重複待抽籤</div></div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline">
+    <div class="tl-step">
+      <div class="tl-dot" style="background:var(--green-bg);border:2px solid var(--green);"><i class="ti ti-check" style="font-size:12px;color:var(--green);"></i></div>
+      <div class="tl-label" style="color:var(--green-text);font-weight:500;">公告公展</div>
+    </div>
+    <div class="tl-line" style="background:var(--green);"></div>
+    <div class="tl-step">
+      <div class="tl-dot" style="background:var(--green-bg);border:2px solid var(--green);"><i class="ti ti-check" style="font-size:12px;color:var(--green);"></i></div>
+      <div class="tl-label" style="color:var(--green-text);font-weight:500;">說明會</div>
+    </div>
+    <div class="tl-line" style="background:var(--green);"></div>
+    <div class="tl-step">
+      <div class="tl-dot" style="background:#E8EDF0;border:2px solid #748B97;"><i class="ti ti-pencil" style="font-size:12px;color:#748B97;"></i></div>
+      <div class="tl-label" style="color:#3D4D56;font-weight:500;">選屋期間<br><span id="tl-now" style="color:var(--orange-text);">進行中</span></div>
+    </div>
+    <div class="tl-line" style="background:var(--bt);"></div>
+    <div class="tl-step">
+      <div class="tl-dot" style="background:var(--cs);border:1px solid var(--bs);"><i class="ti ti-dice" style="font-size:12px;color:var(--tt);"></i></div>
+      <div class="tl-label text-muted">抽籤<br><span id="tl-lottery">—</span></div>
+    </div>
+    <div class="tl-line" style="background:var(--bt);"></div>
+    <div class="tl-step">
+      <div class="tl-dot" style="background:var(--cs);border:1px solid var(--bs);"><i class="ti ti-writing" style="font-size:12px;color:var(--tt);"></i></div>
+      <div class="tl-label text-muted">簽約</div>
+    </div>
+  </div>
+
+  <!-- Selection grid + panel -->
+  <div class="card mb-16" style="padding:0;overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:0.5px solid var(--bt);">
+      <div class="flex items-center justify-between flex-wrap gap-8">
+        <div style="font-size:14px;font-weight:500;"><i class="ti ti-building"></i> 即時選屋狀態</div>
+        <div class="flex gap-8 text-xs" style="flex-wrap:wrap;">
+          <span style="display:flex;align-items:center;gap:4px;">
+            <span style="width:10px;height:10px;background:var(--green-bg);border:0.5px solid #9FE1CB;border-radius:2px;display:inline-block;"></span>已選配</span>
+          <span style="display:flex;align-items:center;gap:4px;">
+            <span style="width:10px;height:10px;background:var(--red-bg);border:0.5px solid #F09595;border-radius:2px;display:inline-block;"></span>重複待抽</span>
+          <span style="display:flex;align-items:center;gap:4px;">
+            <span style="width:10px;height:10px;background:var(--cs);border:0.5px solid var(--bt);border-radius:2px;display:inline-block;"></span>未選</span>
+        </div>
+      </div>
+      <!-- Tower / parking tabs -->
+      <div class="tabs" style="margin-top:10px;margin-bottom:0;">
+        <button class="tab active" id="tower-a" onclick="showTower('A')">A棟</button>
+        <button class="tab" id="tower-b" onclick="showTower('B')">B棟</button>
+        <button class="tab" id="tower-pk" onclick="showTower('P')"><i class="ti ti-car"></i> 車位</button>
+      </div>
+    </div>
+
+    <div style="display:flex;overflow:hidden;">
+      <!-- Grid area -->
+      <div style="flex:1;overflow:auto;padding:14px;">
+        <div id="grid-area"></div>
+        <div id="dup-notices"></div>
+      </div>
+      <!-- Unit detail panel -->
+      <div id="unit-panel">
+        <div id="unit-panel-inner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Documents -->
+  <div style="font-size:14px;font-weight:500;margin-bottom:10px;"><i class="ti ti-folder-open"></i> 文件下載中心</div>
+  <div class="doc-grid">
+    <a class="doc-card" id="doc-delegation" href="#" onclick="return false;">
+      <div class="doc-icon" style="background:var(--red-bg);"><i class="ti ti-file-text" style="color:var(--red-text);"></i></div>
+      <div><div style="font-size:13px;font-weight:500;">選屋委託書</div><div class="text-xs text-muted">PDF · 填寫後請親送</div></div>
+      <i class="ti ti-download" style="color:var(--tt);margin-left:auto;"></i>
+    </a>
+    <a class="doc-card" id="doc-consent" href="#" onclick="return false;">
+      <div class="doc-icon" style="background:#E8EDF0;"><i class="ti ti-file-text" style="color:#3D4D56;"></i></div>
+      <div><div style="font-size:13px;font-weight:500;">地主同意書範本</div><div class="text-xs text-muted">PDF · 參考用</div></div>
+      <i class="ti ti-download" style="color:var(--tt);margin-left:auto;"></i>
+    </a>
+    <a class="doc-card" id="doc-booklet" href="#" onclick="return false;">
+      <div class="doc-icon" style="background:var(--green-bg);"><i class="ti ti-book" style="color:var(--green-text);"></i></div>
+      <div><div style="font-size:13px;font-weight:500;">選屋圖冊（全棟）</div><div class="text-xs text-muted">PDF</div></div>
+      <i class="ti ti-download" style="color:var(--tt);margin-left:auto;"></i>
+    </a>
+    <a class="doc-card" id="doc-plan" href="#" onclick="return false;">
+      <div class="doc-icon" style="background:#F1EFE8;"><i class="ti ti-file-description" style="color:#444;"></i></div>
+      <div><div style="font-size:13px;font-weight:500;">都更事業計畫摘要</div><div class="text-xs text-muted">PDF · 官方核定版</div></div>
+      <i class="ti ti-download" style="color:var(--tt);margin-left:auto;"></i>
+    </a>
+  </div>
+
+  <!-- Identity verification -->
+  <div class="verify-box">
+    <div style="font-size:14px;font-weight:500;margin-bottom:4px;">
+      <i class="ti ti-shield-lock"></i> 查詢我的選配結果
+    </div>
+    <div class="text-sm text-muted mb-12">輸入姓名與身分證字號，查看您的個人選配詳情</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:8px;">
+      <div><div class="field-label">姓名</div><input type="text" id="v-name" placeholder="請輸入真實姓名"></div>
+      <div><div class="field-label">身分證字號</div><input type="text" id="v-id" placeholder="A123456789" maxlength="10" style="letter-spacing:.05em;text-transform:uppercase;"></div>
+      <div style="display:flex;align-items:flex-end;">
+        <button onclick="doVerify()" style="height:38px;padding:0 18px;background:var(--brand);color:#fff;white-space:nowrap;font-size:13px;font-weight:500;">查詢</button>
+      </div>
+    </div>
+    <div class="text-xs text-muted flex gap-4 items-center">
+      <i class="ti ti-lock" style="font-size:12px;"></i> 資料加密傳輸，不留存查詢紀錄
+    </div>
+    <div id="verify-result"></div>
+  </div>
+
+  <!-- Branded footer -->
+  <div style="border-top:0.5px solid var(--bt);margin-top:24px;padding:24px 0;text-align:center;">
+    <img src="data:image/png;base64,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" alt="漢皇集團" style="height:36px;width:auto;margin-bottom:10px;opacity:.85;">
+    <div style="font-size:13px;font-weight:500;color:var(--brand-text);letter-spacing:.08em;margin-bottom:4px;">漢皇集團　HANHUANG GROUP</div>
+    <div style="font-size:12px;color:var(--tt);letter-spacing:.15em;margin-bottom:12px;">承諾為本，如實築家</div>
+    <div style="font-size:11px;color:var(--tt);">清水段選屋系統 · <span id="update-time"></span></div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ============================================================
+//  CONFIG
+// ============================================================
+const API_URL = 'https://script.google.com/macros/s/AKfycbz2oTXAMAVHdMBmtk5y3wJQRQ03Rf5y6AbG5K79wRuIpQIihENevTDRADcTnc99CZ4MPg/exec';
+
+// ============================================================
+//  STATE
+// ============================================================
+let STATE = {
+  unitStatus: {}, parkStatus: {},
+  unitMap: {}, parkMap: {},
+  tower: 'A',
+  cfg: {}
+};
+
+// ============================================================
+//  INIT
+// ============================================================
+window.onload = async function() {
+  await loadConfig();
+  await Promise.all([loadStatus(), loadUnitData(), loadParkingData()]);
+  renderGrid();
+  renderStats();
+  document.getElementById('update-time').textContent = '更新：' + new Date().toLocaleString('zh-TW');
+};
+
+async function apiGet(action, params={}) {
+  const qs = new URLSearchParams({ action, ...params });
+  const res = await fetch(`${API_URL}?${qs}`);
+  const d   = await res.json();
+  return d.status === 'ok' ? d.data : null;
+}
+
+async function loadConfig() {
+  const cfg = await apiGet('getCase');
+  if (!cfg) return;
+  STATE.cfg = cfg;
+  const isTest = cfg.env === 'test';
+  document.getElementById('test-banner').style.display = isTest ? '' : 'none';
+  // Countdown
+  if (cfg.selection_end) {
+    const end   = new Date(cfg.selection_end);
+    const now   = new Date();
+    const days  = Math.max(0, Math.ceil((end - now) / 86400000));
+    document.getElementById('countdown-badge').textContent = `截止倒數 ${days} 天`;
+    document.getElementById('status-badge').innerHTML = `<i class="ti ti-pencil"></i> 選屋進行中`;
+    document.getElementById('status-badge').style.background = '#E8EDF0';
+    document.getElementById('status-badge').style.color = '#3D4D56';
+  }
+  if (cfg.lottery_date) document.getElementById('tl-lottery').textContent = cfg.lottery_date;
+  // 多則公告
+  loadAnnouncements();
+}
+
+async function loadAnnouncements() {
+  const list = await apiGet('getAnnouncements');
+  const area = document.getElementById('announcement-area');
+  if (!list || !list.length) { area.innerHTML = ''; return; }
+
+  const levelStyle = {
+    urgent:    { bg:'var(--red-bg)',    border:'var(--red)',    text:'var(--red-text)',    icon:'ti-alert-circle',   label:'重要' },
+    important: { bg:'var(--orange-bg)', border:'var(--orange)', text:'var(--orange-text)', icon:'ti-speakerphone',   label:'公告' },
+    info:      { bg:'var(--brand-bg)',  border:'var(--brand)',  text:'var(--brand-text)',  icon:'ti-info-circle',    label:'通知' },
+  };
+
+  const cards = list.map(a => {
+    const s = levelStyle[a.level] || levelStyle.info;
+    return `<div style="background:${s.bg};border:0.5px solid ${s.border};border-radius:var(--rl);
+      padding:12px 16px;margin-bottom:8px;">
+      <div class="flex items-center gap-8" style="margin-bottom:${a.content?'5px':'0'};">
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;
+          color:${s.text};background:var(--cp);padding:2px 8px;border-radius:8px;">
+          <i class="ti ${s.icon}" style="font-size:12px;"></i> ${s.label}
+        </span>
+        <span style="font-size:13px;font-weight:500;color:var(--tp);">${a.title||''}</span>
+        ${a.date?`<span style="margin-left:auto;font-size:11px;color:var(--tt);">${a.date}</span>`:''}
+      </div>
+      ${a.content?`<div class="text-sm" style="color:var(--ts);line-height:1.6;padding-left:2px;">${a.content}</div>`:''}
+    </div>`;
+  }).join('');
+
+  area.innerHTML = `<div style="margin-bottom:20px;">${cards}</div>`;
+}
+
+async function loadStatus() {
+  const d = await apiGet('publicStatus');
+  if (!d) return;
+  STATE.unitStatus  = d.units   || {};
+  STATE.parkStatus  = d.parking || {};
+}
+
+async function loadUnitData() {
+  const d = await apiGet('getUnits');
+  if (d) STATE.unitMap = d;
+}
+
+async function loadParkingData() {
+  const d = await apiGet('getParking');
+  if (d) STATE.parkMap = d;
+}
+
+// ============================================================
+//  STATS
+// ============================================================
+function renderStats() {
+  const selCount = Object.values(STATE.unitStatus).filter(v=>v>0).length;
+  const dupCount = Object.values(STATE.unitStatus).filter(v=>v>=2).length
+                 + Object.values(STATE.parkStatus).filter(v=>v>=2).length;
+  document.getElementById('s-selected').textContent = selCount;
+  document.getElementById('s-dup').textContent      = dupCount;
+}
+
+// ============================================================
+//  FLOOR GRID
+// ============================================================
+const FLOORS  = ['21F','20F','19F','18F','17F','16F','15F','14F','13F','12F','11F','10F',
+                 '9F','8F','7F','6F','5F','4F','3F','2F'];
+const SHOP_FL = ['1F'];
+const A_TYPES = ['A1','A2','A3','A5','A6','A7','A8','A9'];
+const B_TYPES = ['B1','B2','B3','B5','B6','B7','B8','B9'];
+const PK_FLOORS = ['B1','B2','B3','B4','B5'];
+
+function showTower(t) {
+  STATE.tower = t;
+  ['A','B','P'].forEach(x => {
+    const el = document.getElementById('tower-' + (x === 'P' ? 'pk' : x.toLowerCase()));
+    if (el) el.classList.toggle('active', x === t);
+  });
+  renderGrid();
+}
+
+function renderGrid() {
+  const area = document.getElementById('grid-area');
+  if (STATE.tower === 'P') { renderParkingGrid(area); return; }
+
+  const types  = STATE.tower === 'A' ? A_TYPES : B_TYPES;
+  const floors = [...FLOORS];
+
+  let html = '';
+
+  // Header row (unit types)
+  html += `<div style="display:flex;gap:1px;padding-left:36px;margin-bottom:4px;">`;
+  types.forEach(t => { html += `<div style="width:44px;font-size:9.5px;text-align:center;color:var(--tt);font-weight:500;">${t}</div>`; });
+  html += `</div>`;
+
+  floors.forEach(fl => {
+    html += `<div style="display:flex;align-items:center;gap:1px;margin-bottom:2px;">`;
+    html += `<div style="width:34px;font-size:10px;color:var(--tt);text-align:right;padding-right:4px;">${fl}</div>`;
+    types.forEach(t => {
+      const key = `${fl}-${t}`;
+      const cnt = STATE.unitStatus[key] || 0;
+      if (cnt === 0) {
+        html += `<div class="floor-cell fc-empty" title="${key}：尚未選配" onclick="showUnit('${key}')"></div>`;
+      } else if (cnt === 1) {
+        html += `<div class="floor-cell fc-sel" title="${key}：已選配" onclick="showUnit('${key}')">
+          <i class="ti ti-check" style="font-size:11px;"></i></div>`;
+      } else {
+        html += `<div class="floor-cell fc-dup" title="${key}：重複 ${cnt} 人" onclick="showUnit('${key}')">${cnt}人</div>`;
+      }
+    });
+    html += `</div>`;
+  });
+
+  area.innerHTML = html;
+  renderDupNotices('unit');
+}
+
+function renderParkingGrid(area) {
+  let html = '';
+  PK_FLOORS.forEach(fl => {
+    const spaces = Object.keys(STATE.parkMap)
+      .filter(k => k.startsWith(fl + '-'))
+      .sort((a, b) => {
+        const na = parseInt(a.split('-')[1], 10);
+        const nb = parseInt(b.split('-')[1], 10);
+        return na - nb;
+      });
+    if (!spaces.length) return;
+    html += `<div style="margin-bottom:14px;">`;
+    html += `<div style="font-size:11px;font-weight:500;color:var(--tp);margin-bottom:6px;">
+      ${fl} 地下層 (${spaces.length} 位)</div>`;
+    html += `<div style="display:flex;flex-wrap:wrap;gap:3px;">`;
+    spaces.forEach(pk => {
+      const num = pk.split('-')[1];   // 顯示編號數字
+      const cnt = STATE.parkStatus[pk] || 0;
+      if (cnt === 0) {
+        html += `<div class="park-cell pc-empty" title="${pk}：尚未選配" onclick="showParking('${pk}')">${num}</div>`;
+      } else if (cnt === 1) {
+        html += `<div class="park-cell pc-sel" title="${pk}：已選配" onclick="showParking('${pk}')">${num}</div>`;
+      } else {
+        html += `<div class="park-cell pc-dup" title="${pk}：重複 ${cnt} 人" onclick="showParking('${pk}')">${num}<span class="pc-badge">${cnt}</span></div>`;
+      }
+    });
+    html += `</div></div>`;
+  });
+  area.innerHTML = html;
+  renderDupNotices('parking');
+}
+
+function renderDupNotices(type) {
+  const status = type === 'unit' ? STATE.unitStatus : STATE.parkStatus;
+  const dups = Object.entries(status).filter(([,v]) => v >= 2).map(([k,v]) =>
+    `<div class="text-sm" style="color:var(--red-text);">${k}：共 ${v} 人選配，待抽籤決定</div>`
+  ).join('');
+
+  if (dups) {
+    document.getElementById('dup-notices').innerHTML = `
+      <div class="dup-notice mt-12">
+        <div class="font-medium text-sm" style="color:var(--red-text);margin-bottom:6px;">
+          <i class="ti ti-alert-circle"></i> 重複選配公告
+        </div>
+        ${dups}
+      </div>`;
+  } else {
+    document.getElementById('dup-notices').innerHTML = '';
+  }
+}
+
+// ============================================================
+//  UNIT DETAIL PANEL (public view — no names)
+// ============================================================
+function showUnit(code) {
+  const m = code.match(/^(\d+F)-([A-Z]\d+)$/);
+  if (!m) return;
+  const fl = m[1], type = m[2];
+  const u  = STATE.unitMap[code];
+  const cnt = STATE.unitStatus[code] || 0;
+
+  let statusHtml = '';
+  if (cnt === 0)
+    statusHtml = `<span style="background:var(--green-bg);color:var(--green-text);font-size:11px;font-weight:500;padding:2px 8px;border-radius:8px;">尚未選配</span>`;
+  else if (cnt === 1)
+    statusHtml = `<span style="background:var(--green-bg);color:var(--green-text);font-size:11px;font-weight:500;padding:2px 8px;border-radius:8px;"><i class="ti ti-check" style="font-size:11px;"></i> 已選配</span>`;
+  else
+    statusHtml = `<span style="background:var(--red-bg);color:var(--red-text);font-size:11px;font-weight:500;padding:2px 8px;border-radius:8px;"><i class="ti ti-alert-circle" style="font-size:11px;"></i> 重複 ${cnt} 人</span>`;
+
+  // Floor plan placeholder
+  const planUrl = u?.floor_plan_url || '';
+  const planHtml = planUrl
+    ? `<img src="${planUrl}" style="width:100%;border-radius:6px;margin-bottom:12px;" alt="樓層平面圖">`
+    : `<div style="background:var(--cs);border:0.5px dashed var(--bs);border-radius:var(--rm);
+        padding:14px;text-align:center;margin-bottom:12px;">
+        <i class="ti ti-photo" style="font-size:28px;display:block;margin-bottom:6px;color:var(--tt);"></i>
+        <div class="text-xs text-muted">平面圖<br><span style="font-size:10px;">（提供後更新）</span></div>
+       </div>`;
+
+  const unitPlanUrl = u?.unit_plan_url || '';
+  const unitPlanHtml = unitPlanUrl
+    ? `<div class="mb-12"><img src="${unitPlanUrl}" style="width:100%;border-radius:6px;" alt="戶型圖"></div>`
+    : '';
+
+  document.getElementById('unit-panel-inner').innerHTML = `
+    <div class="flex items-center justify-between mb-12">
+      <div>
+        <div style="font-size:16px;font-weight:500;">${code}</div>
+        <div class="text-xs text-muted mt-1">${fl} · ${STATE.tower === 'A' ? 'A棟' : 'B棟'}</div>
+      </div>
+      <button onclick="document.getElementById('unit-panel').style.display='none'"
+        style="background:none;border:none;font-size:18px;color:var(--tt);cursor:pointer;padding:0 2px;">✕</button>
+    </div>
+    <div class="mb-12">${statusHtml}</div>
+    ${planHtml}
+    ${unitPlanHtml}
+    <div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px;">
+        <span class="text-muted">戶型代號</span><span class="font-medium">${type}</span>
+        <span class="text-muted">樓層</span><span class="font-medium">${fl}</span>
+        ${u ? `<span class="text-muted">主建物面積</span><span class="font-medium">${u.area_sqp} 坪</span>
+               <span class="text-muted">圖冊價值</span><span class="font-medium">NT$${fmt(u.total_value)}</span>` : ''}
+      </div>
+    </div>
+    ${cnt >= 2 ? `<div class="mt-8" style="background:var(--red-bg);border-radius:var(--rm);padding:8px 10px;font-size:11px;color:var(--red-text);">
+      此戶有 ${cnt} 人選配，將於抽籤後決定最終歸屬。請持續關注公告。</div>` : ''}
+  `;
+  document.getElementById('unit-panel').style.display = 'block';
+}
+
+function showParking(code) {
+  const pk  = STATE.parkMap[code];
+  const cnt = STATE.parkStatus[code] || 0;
+  const fl  = code.split('-')[0];
+
+  let statusHtml = cnt === 0
+    ? `<span style="background:var(--green-bg);color:var(--green-text);font-size:11px;font-weight:500;padding:2px 8px;border-radius:8px;">尚未選配</span>`
+    : cnt === 1
+    ? `<span style="background:var(--green-bg);color:var(--green-text);font-size:11px;font-weight:500;padding:2px 8px;border-radius:8px;"><i class="ti ti-check" style="font-size:11px;"></i> 已選配</span>`
+    : `<span style="background:var(--red-bg);color:var(--red-text);font-size:11px;font-weight:500;padding:2px 8px;border-radius:8px;"><i class="ti ti-alert-circle" style="font-size:11px;"></i> 重複 ${cnt} 人</span>`;
+
+  document.getElementById('unit-panel-inner').innerHTML = `
+    <div class="flex items-center justify-between mb-12">
+      <div>
+        <div style="font-size:16px;font-weight:500;">${code}</div>
+        <div class="text-xs text-muted mt-1">${fl} 地下層</div>
+      </div>
+      <button onclick="document.getElementById('unit-panel').style.display='none'"
+        style="background:none;border:none;font-size:18px;color:var(--tt);cursor:pointer;padding:0 2px;">✕</button>
+    </div>
+    <div class="mb-12">${statusHtml}</div>
+    <div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px;">
+        <span class="text-muted">車位編號</span><span class="font-medium">${code}</span>
+        <span class="text-muted">樓層</span><span class="font-medium">${fl}</span>
+        ${pk ? `<span class="text-muted">尺寸</span><span class="font-medium">${pk.size||''}</span>
+                <span class="text-muted">圖冊單價</span><span class="font-medium">NT$${fmt(pk.price)}</span>
+                ${pk.notes ? `<span class="text-muted">備註</span><span class="font-medium">${pk.notes}</span>` : ''}` : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('unit-panel').style.display = 'block';
+}
+
+// ============================================================
+//  IDENTITY VERIFY
+// ============================================================
+async function doVerify() {
+  const name = document.getElementById('v-name').value.trim();
+  const id   = document.getElementById('v-id').value.trim().toUpperCase();
+  const el   = document.getElementById('verify-result');
+
+  if (!name || !id) {
+    el.innerHTML = `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 12px;border-radius:var(--rm);font-size:12px;margin-top:8px;">請填寫姓名與身分證字號</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="text-sm text-muted" style="margin-top:8px;">查詢中…</div>`;
+
+  try {
+    const res = await apiGet('verifyOwner', { name, id });
+    if (!res) throw new Error('API error');
+
+    if (!res.matched) {
+      el.innerHTML = `<div style="background:var(--red-bg);border:0.5px solid #F09595;border-radius:var(--rm);padding:10px 12px;font-size:12px;color:var(--red-text);margin-top:8px;">
+        <i class="ti ti-alert-circle"></i> 找不到符合的地主資料，請確認後重試或聯絡漢皇建設
+      </div>`;
+      return;
+    }
+
+    const sel    = res.selection;
+    const settle = sel ? Number(sel.settlement) : 0;
+    const units  = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
+    const parks  = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
+    const status = sel?.status || 'none';
+    const stLabel = { confirmed:'正式', draft:'草稿', needs_reselect:'需改選', none:'未登記' };
+
+    el.innerHTML = `<div style="background:var(--cp);border:1.5px solid #9FE1CB;border-radius:var(--rl);padding:16px;margin-top:10px;">
+      <div class="flex items-center gap-8 mb-12">
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--green-bg);
+          display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="ti ti-user" style="font-size:20px;color:var(--green-text);"></i>
+        </div>
+        <div><div style="font-size:15px;font-weight:500;">${res.name} 您好</div>
+        <div class="text-xs text-muted">負責同仁：${res.handler||'—'}</div></div>
+        <span style="margin-left:auto;background:${status==='confirmed'?'var(--green-bg)':'#E6F1FB'};
+          color:${status==='confirmed'?'var(--green-text)':'#0C447C'};font-size:11px;
+          font-weight:500;padding:2px 8px;border-radius:8px;">${stLabel[status]||status}</span>
+      </div>
+      <div class="grid-2 mb-12">
+        <div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;">
+          <div class="text-xs text-muted mb-4">選配上限</div>
+          <div style="font-size:14px;font-weight:500;">NT$${fmt(res.upper_limit)}</div>
+        </div>
+        <div style="background:${settle>0?'var(--red-bg)':settle<0?'var(--green-bg)':'var(--cs)'};border-radius:var(--rm);padding:10px 12px;">
+          <div class="text-xs mb-4" style="color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">找補試算</div>
+          <div style="font-size:14px;font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
+            ${settle>0?'需補差 NT$'+fmt(settle):settle<0?'退款 NT$'+fmt(-settle):'無需找補'}
+          </div>
+        </div>
+      </div>
+      ${units.length||parks.length ? `<div class="text-xs text-muted mb-4">已登記選配</div>
+        ${units.map(u=>`<div class="text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);">🏠 ${u}</div>`).join('')}
+        ${parks.map(p=>`<div class="text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);">🚗 ${p}</div>`).join('')}` : ''}
+      ${status === 'none' ? `<div style="background:var(--orange-bg);color:var(--orange-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">
+        您尚未完成選配，請聯絡漢皇建設辦理選配作業。</div>` : ''}
+      ${status === 'needs_reselect' ? `<div style="background:#E8EDF0;color:#3D4D56;padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">
+        您的選配因重複抽籤結果須重新選配，請盡速與負責同仁聯絡。</div>` : ''}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 12px;border-radius:var(--rm);font-size:12px;margin-top:8px;">查詢失敗，請稍後再試</div>`;
+  }
+}
+
+// ============================================================
+//  UTILS
+// ============================================================
+function fmt(n) { return Math.round(n||0).toLocaleString('zh-TW'); }
+</script>
+</body>
+</html>
