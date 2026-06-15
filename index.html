@@ -846,16 +846,25 @@ function previewSelection(ownerId) {
       } else {
         html = `<div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;font-size:12px;">
           <div class="flex justify-between mb-4"><span class="text-muted">總選配價值</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
-          <div class="flex justify-between mb-4"><span class="text-muted">選配上限</span><span>NT$${fmt(limit)}</span></div>
+          <div class="flex justify-between mb-4"><span class="text-muted">選配上限（110%）</span><span>NT$${fmt(limit)}</span></div>
           <div class="flex justify-between mb-4"><span class="text-muted">找補</span>
             <span style="font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
               ${settle>0?'繳 NT$'+fmt(settle):settle<0?'領 NT$'+fmt(-settle):'零'}
             </span>
           </div>
-          ${over?`<div style="background:var(--orange-bg);color:var(--orange-text);padding:4px 8px;border-radius:4px;font-size:11px;"><i class="ti ti-alert-triangle"></i> 超過 110% 上限</div>`:''}
+          ${over?`<div style="background:var(--red-bg);color:var(--red-text);padding:6px 8px;border-radius:4px;font-size:12px;font-weight:500;">
+            <i class="ti ti-ban"></i> 超過 110% 上限 NT$${fmt(total-limit)}，不能送出</div>`:''}
         </div>`;
       }
       document.getElementById('sel-validation').innerHTML = html;
+
+      // 超選或有錯誤 → 鎖住正式登錄和草稿按鈕
+      const canSubmit = !over && errs.length === 0;
+      document.querySelectorAll('#modal-box .btn-success, #modal-box .btn-secondary[onclick*="draft"]').forEach(btn => {
+        btn.disabled = !canSubmit;
+        btn.style.opacity = canSubmit ? '1' : '0.4';
+        btn.style.cursor = canSubmit ? 'pointer' : 'not-allowed';
+      });
     });
   });
 }
@@ -868,6 +877,25 @@ async function submitSelection(ownerId, status) {
   const phone   = document.getElementById('sel-phone')?.value || '';
   const address = document.getElementById('sel-address')?.value || '';
   const btn = document.querySelector('#modal-box .btn-primary, #modal-box .btn-success');
+  // 後端前硬擋超選（防止繞過試算直接送）
+  const ownerForCheck = STATE.owners.find(o => o.owner_id == ownerId);
+  const usageForCheck = MERGE_STATE?.usage?.[ownerId];
+  const mergeInvestedCheck = usageForCheck ? (Number(usageForCheck.merge_invested)||0) : 0;
+  const limitForCheck = Number(ownerForCheck?.upper_limit||0) - mergeInvestedCheck;
+  if (limitForCheck > 0) {
+    // 快速算選配總價（從 unitMap cache 或直接擋）
+    const cachedUnitMap = MERGE_STATE?.unitMap;
+    const cachedParkMap = MERGE_STATE?.parkMap;
+    if (cachedUnitMap && cachedParkMap) {
+      let totalCheck = 0;
+      units.forEach(u => { if (cachedUnitMap[u]) totalCheck += cachedUnitMap[u].total_value; });
+      parks.forEach(p => { if (cachedParkMap[p]) totalCheck += cachedParkMap[p].price; });
+      if (totalCheck > limitForCheck && totalCheck > 0) {
+        alert(`選配總價 NT$${fmt(totalCheck)} 超過上限 NT$${fmt(limitForCheck)}（110%），不能送出`);
+        return;
+      }
+    }
+  }
   btnLoading(btn, '儲存中…');
   try {
     const owner = STATE.owners.find(o => o.owner_id == ownerId);
