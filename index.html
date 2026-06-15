@@ -1958,6 +1958,20 @@ function renderDashboard(unitMap, parkMap) {
     </div>`;
   }).join('');
 
+  // 剩餘戶別列表（排序：樓層低到高）
+  const remUnitList = Object.entries(unitMap)
+    .filter(([k]) => !k.includes('-S') && !selectedUnits.has(k))
+    .map(([k, u]) => ({ unit_no: k, ...u }))
+    .sort((a, b) => {
+      const fa = parseInt(a.unit_no.match(/^(\d+)F-/)?.[1]||0);
+      const fb = parseInt(b.unit_no.match(/^(\d+)F-/)?.[1]||0);
+      return fa !== fb ? fa - fb : a.unit_no.localeCompare(b.unit_no);
+    });
+  const maxFloor = remUnitList.reduce((m, u) => {
+    const f = parseInt(u.unit_no.match(/^(\d+)F-/)?.[1]||0);
+    return Math.max(m, f);
+  }, 21);
+
   el.innerHTML = `
     <!-- 主要數字 -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
@@ -1982,7 +1996,7 @@ function renderDashboard(unitMap, parkMap) {
         <div class="text-xs text-muted">剩餘車位/戶別</div>
       </div>
       <div class="stat-card">
-        <div class="stat-n" style="color:var(--brand-text);">${remSqp.toFixed(1)}</div>
+        <div class="stat-n" style="color:var(--brand-text);">${remSqp.toFixed(1)}<span style="font-size:14px;font-weight:400;"> 坪</span></div>
         <div class="stat-l">剩餘坪數</div>
         <div class="text-xs text-muted">未選戶別合計</div>
       </div>
@@ -2002,6 +2016,51 @@ function renderDashboard(unitMap, parkMap) {
       </div>
     </div>
 
+    <!-- 樓層範圍滑桿 -->
+    <div class="card mb-16">
+      <div style="font-size:13px;font-weight:500;margin-bottom:12px;">樓層範圍查詢</div>
+      <div class="flex items-center gap-12 mb-8">
+        <span class="text-xs text-muted" style="width:36px;text-align:right;">起始</span>
+        <input type="range" id="floor-min" min="1" max="${maxFloor}" value="1"
+          oninput="syncFloorSlider()" style="flex:1;">
+        <span id="floor-min-val" style="font-size:13px;font-weight:500;width:40px;">1F</span>
+      </div>
+      <div class="flex items-center gap-12 mb-12">
+        <span class="text-xs text-muted" style="width:36px;text-align:right;">結束</span>
+        <input type="range" id="floor-max" min="1" max="${maxFloor}" value="${maxFloor}"
+          oninput="syncFloorSlider()" style="flex:1;">
+        <span id="floor-max-val" style="font-size:13px;font-weight:500;width:40px;">${maxFloor}F</span>
+      </div>
+      <div id="floor-result" style="background:var(--brand-bg);border-radius:6px;padding:10px 14px;font-size:13px;">
+        <span class="text-muted">拖拉滑桿選擇樓層範圍</span>
+      </div>
+    </div>
+
+    <!-- 自由勾選戶別統計 -->
+    <div class="card mb-16">
+      <div class="flex items-center justify-between mb-8">
+        <div style="font-size:13px;font-weight:500;">自由勾選戶別統計</div>
+        <div class="flex gap-6">
+          <button class="btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="toggleAllUnits(true)">全選</button>
+          <button class="btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="toggleAllUnits(false)">清除</button>
+        </div>
+      </div>
+      <div class="text-xs text-muted mb-8">勾選想統計的剩餘戶別，即時顯示佔剩餘總戶別的比例</div>
+      <div id="unit-check-result" style="background:var(--brand-bg);border-radius:6px;padding:10px 14px;
+        font-size:13px;margin-bottom:10px;display:none;"></div>
+      <div id="unit-check-list" style="max-height:300px;overflow-y:auto;
+        display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:4px;">
+        ${remUnitList.map(u =>
+          `<label style="display:flex;align-items:center;gap:5px;padding:4px 6px;
+            border-radius:5px;cursor:pointer;font-size:12px;border:0.5px solid var(--bt);">
+            <input type="checkbox" value="${u.unit_no}" onchange="calcUnitCheck(${remUnits})"
+              style="width:auto;margin:0;">
+            <span>${u.unit_no}</span>
+          </label>`
+        ).join('')}
+      </div>
+    </div>
+
     <!-- 剩餘戶型分布 -->
     <div class="card">
       <div style="font-size:13px;font-weight:500;margin-bottom:12px;">剩餘戶型分布
@@ -2014,6 +2073,64 @@ function renderDashboard(unitMap, parkMap) {
       </div>` : '<div class="text-muted text-xs">無剩餘戶別</div>'}
     </div>
   `;
+
+  // 初始化樓層滑桿
+  syncFloorSlider();
+}
+
+// 樓層滑桿即時計算
+function syncFloorSlider() {
+  const minEl = document.getElementById('floor-min');
+  const maxEl = document.getElementById('floor-max');
+  const minV  = document.getElementById('floor-min-val');
+  const maxV  = document.getElementById('floor-max-val');
+  const resEl = document.getElementById('floor-result');
+  if (!minEl || !maxEl) return;
+
+  let lo = parseInt(minEl.value);
+  let hi = parseInt(maxEl.value);
+  if (lo > hi) { if (minEl === document.activeElement) { hi = lo; maxEl.value = lo; } else { lo = hi; minEl.value = hi; } }
+  minV.textContent = lo + 'F';
+  maxV.textContent = hi + 'F';
+
+  // 從 unit-check-list 的 checkbox 裡讀所有剩餘戶別
+  const allBoxes = document.querySelectorAll('#unit-check-list input[type=checkbox]');
+  let inRange = 0, total = allBoxes.length;
+  allBoxes.forEach(cb => {
+    const unitNo = cb.value;  // e.g. "5F-A2"
+    const floorMatch = unitNo.match(/^(\d+)F-/);
+    if (floorMatch) {
+      const f = parseInt(floorMatch[1]);
+      if (f >= lo && f <= hi) inRange++;
+    }
+  });
+  const pct = total > 0 ? Math.round(inRange / total * 100) : 0;
+  resEl.innerHTML = `<span style="font-weight:500;">${lo}F–${hi}F</span>
+    <span class="text-muted" style="margin:0 8px;">共</span>
+    <span style="font-weight:600;color:var(--accent);">${inRange} 戶</span>
+    <span class="text-muted" style="margin:0 8px;">佔剩餘</span>
+    <span style="font-weight:600;color:var(--accent);">${pct}%</span>
+    <span class="text-muted">（剩餘 ${total} 戶）</span>`;
+}
+
+// 自由勾選戶別即時計算
+function calcUnitCheck(remTotal) {
+  const boxes = document.querySelectorAll('#unit-check-list input[type=checkbox]:checked');
+  const count = boxes.length;
+  const pct   = remTotal > 0 ? Math.round(count / remTotal * 100) : 0;
+  const resEl = document.getElementById('unit-check-result');
+  if (!resEl) return;
+  resEl.style.display = count > 0 ? '' : 'none';
+  resEl.innerHTML = `已勾選 <span style="font-weight:600;color:var(--accent);">${count} 戶</span>
+    <span class="text-muted" style="margin:0 8px;">佔剩餘 ${remTotal} 戶的</span>
+    <span style="font-weight:600;font-size:16px;color:var(--accent);">${pct}%</span>`;
+}
+
+// 全選/清除
+function toggleAllUnits(check) {
+  document.querySelectorAll('#unit-check-list input[type=checkbox]').forEach(cb => cb.checked = check);
+  const remTotal = document.querySelectorAll('#unit-check-list input[type=checkbox]').length;
+  calcUnitCheck(remTotal);
 }
 
 // ============================================================
