@@ -1338,33 +1338,34 @@ function renderMergeList() {
       </div>`;
     }).join('');
 
-    return `<div class="card mb-12">
+    return `<div class="card mb-12" style="${g.is_over_limit?'border:1px solid var(--red);':''}">
       <div class="flex items-center justify-between mb-8">
-        <div style="font-weight:500;"><i class="ti ti-users"></i> ${memberNames}</div>
+        <div style="font-weight:500;"><i class="ti ti-users"></i> ${memberNames}（${members.length}人合併）</div>
         <div class="flex gap-6">
           <button class="btn-secondary" style="padding:3px 8px;font-size:12px;" onclick="openMergeModal('${g.group_id}')"><i class="ti ti-pencil"></i></button>
           <button class="btn-secondary" style="padding:3px 8px;font-size:12px;" onclick="deleteMerge('${g.group_id}')"><i class="ti ti-trash"></i></button>
         </div>
       </div>
+      ${g.is_over_limit?'<div style="background:var(--red-bg);color:var(--red-text);padding:6px 10px;border-radius:6px;font-size:12px;margin-bottom:8px;"><i class="ti ti-alert-circle"></i> 選配總價超過合併權值的 110% 上限</div>':''}
+      <div class="mb-8" style="background:var(--brand-bg);border-radius:6px;padding:8px 10px;">
+        <div class="text-xs" style="color:var(--brand-text);margin-bottom:2px;">合併選配內容</div>
+        <div style="font-size:13px;font-weight:500;">${units?'🏠 '+units:''} ${parks?'🚗 '+parks:''}</div>
+      </div>
       <div class="grid-2 mb-8" style="gap:8px;">
         <div style="background:var(--cs);border-radius:6px;padding:8px 10px;">
-          <div class="text-xs text-muted">合併權值基礎</div>
+          <div class="text-xs text-muted">合併權值基礎（出資加總）</div>
           <div style="font-weight:500;">NT$${fmt(g.combined_rights)}</div>
           <div class="text-xs text-muted">上限 110%：NT$${fmt(g.combined_limit)}</div>
         </div>
-        <div style="background:${g.is_over_limit?'var(--orange-bg)':'var(--cs)'};border-radius:6px;padding:8px 10px;">
+        <div style="background:var(--cs);border-radius:6px;padding:8px 10px;">
           <div class="text-xs text-muted">選配總價</div>
           <div style="font-weight:500;">NT$${fmt(g.total_selected)}</div>
-          ${g.is_over_limit?'<div class="text-xs" style="color:var(--orange-text);">⚠ 超過上限</div>':''}
+          <div class="text-xs" style="color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
+            ${settle>0?'組需補繳 '+fmt(settle):settle<0?'組可退還 '+fmt(-settle):'無找補'}</div>
         </div>
       </div>
-      <div class="text-xs mb-4"><span class="text-muted">選配：</span>${units?'🏠 '+units:''} ${parks?'🚗 '+parks:''}</div>
-      <div style="background:var(--cs);border-radius:6px;padding:8px 10px;margin-top:6px;">
-        <div class="flex justify-between text-xs font-medium mb-4">
-          <span>找補拆分（按投入比例）</span>
-          <span style="color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
-            組合計 ${settle>0?'補 '+fmt(settle):settle<0?'退 '+fmt(-settle):'無'}</span>
-        </div>
+      <div style="background:var(--cs);border-radius:6px;padding:8px 10px;">
+        <div class="text-xs font-medium mb-4">各人出資與找補</div>
         ${splitRows}
       </div>
     </div>`;
@@ -1374,130 +1375,236 @@ function renderMergeList() {
 function openMergeModal(groupId) {
   const group = groupId ? MERGE_STATE.groups.find(g => g.group_id === groupId) : null;
   MERGE_STATE.editing = groupId || null;
-  // 預設組員：編輯時帶入，新增時空白
+  MERGE_STATE.memberSearch = '';
+  // 投入金額表：{ owner_id: 金額 }，編輯時帶入原投入，新增時帶入剩餘全額
+  MERGE_STATE.invest = {};
+  if (group) {
+    group.members.forEach(m => { MERGE_STATE.invest[m.owner_id] = Number(m.invested)||0; });
+  }
   MERGE_STATE.selectedMembers = group ? group.members.map(m => m.owner_id) : [];
+  MERGE_STATE.mergeTotal = 0;  // 選配總價（試算後更新）
 
   document.getElementById('modal-title').textContent = group ? '編輯合併組' : '新增合併組';
 
-  // 有剩餘權值的地主才能加入（剩餘 > 0），編輯時也要包含已在組內的
-  const candidates = Object.values(MERGE_STATE.usage)
-    .filter(u => u.remaining > 0 || MERGE_STATE.selectedMembers.includes(u.owner_id))
-    .sort((a,b) => String(a.serial_no).localeCompare(String(b.serial_no)));
-
   document.getElementById('modal-body').innerHTML = `
     <div class="mb-12">
-      <div class="field-label">選擇組員（顯示剩餘可用權值，勾選後自動投入全部剩餘）</div>
-      <div style="max-height:200px;overflow-y:auto;border:0.5px solid var(--bt);border-radius:var(--rm);padding:6px;">
-        ${candidates.map(u => `
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:6px;">
-            <input type="checkbox" value="${u.owner_id}" ${MERGE_STATE.selectedMembers.includes(u.owner_id)?'checked':''}
-              onchange="toggleMergeMember('${u.owner_id}')" style="width:auto;">
-            <span style="flex:1;">${u.serial_no} ${u.name}</span>
-            <span class="text-xs text-muted">剩餘 NT$${fmt(u.remaining)}</span>
-          </label>`).join('') || '<div class="text-xs text-muted" style="padding:10px;">目前無有剩餘權值的地主</div>'}
-      </div>
+      <div class="field-label">搜尋並選擇組員（打姓名或編號篩選）</div>
+      <input type="text" id="merge-member-search" placeholder="輸入姓名或編號…" oninput="filterMergeMembers(this.value)" style="margin-bottom:6px;">
+      <div id="merge-candidates" style="max-height:160px;overflow-y:auto;border:0.5px solid var(--bt);border-radius:var(--rm);padding:6px;"></div>
     </div>
-    <div class="mb-12" id="merge-invest-summary"></div>
+
     <div class="mb-12">
       <div class="field-label">合併選配戶別（可用簡寫：03a2，逗號分隔）</div>
       <input type="text" id="merge-units" value="${group?(group.unit_nos||[]).join(','):''}" placeholder="例：03a2 或 3F-A2"
-        oninput="previewCodes('merge-units','merge-units-preview','unit')">
+        oninput="previewCodes('merge-units','merge-units-preview','unit'); recalcMerge()">
       <div id="merge-units-preview" style="margin-top:4px;font-size:12px;"></div>
     </div>
     <div class="mb-12">
       <div class="field-label">合併選配車位（可用簡寫：b2196，逗號分隔）</div>
       <input type="text" id="merge-parks" value="${group?(group.parking_nos||[]).join(','):''}" placeholder="例：b2196 或 B2-196"
-        oninput="previewCodes('merge-parks','merge-parks-preview','parking')">
+        oninput="previewCodes('merge-parks','merge-parks-preview','parking'); recalcMerge()">
       <div id="merge-parks-preview" style="margin-top:4px;font-size:12px;"></div>
     </div>
-    <div class="mb-12" id="merge-preview"></div>
+
+    <div class="field-label">各人出資（可改金額或比例，預設帶入剩餘全額）</div>
+    <div id="merge-invest-rows" style="margin-bottom:8px;"></div>
+
+    <div id="merge-check" style="margin-bottom:10px;"></div>
+
     <div class="flex gap-8">
-      <button class="btn-secondary flex-1" onclick="previewMerge()"><i class="ti ti-calculator"></i> 試算找補</button>
-      <button class="btn-primary flex-1" onclick="submitMerge()">儲存合併組</button>
+      <button class="btn-secondary flex-1" onclick="loadMergeMaps().then(recalcMerge)"><i class="ti ti-calculator"></i> 重新試算</button>
+      <button class="btn-primary flex-1" id="merge-submit-btn" onclick="submitMerge()">儲存合併組</button>
     </div>
   `;
   openModal();
-  updateMergeInvestSummary();
+  loadMergeMaps().then(() => {
+    renderMergeCandidates();
+    recalcMerge();
+  });
+}
+
+// 載入戶別車位價格表（快取）
+async function loadMergeMaps() {
+  if (!MERGE_STATE.unitMap) {
+    const [u, p] = await Promise.all([apiGet('getUnits'), apiGet('getParking')]);
+    MERGE_STATE.unitMap = u || {};
+    MERGE_STATE.parkMap = p || {};
+  }
+}
+
+function filterMergeMembers(q) {
+  MERGE_STATE.memberSearch = (q||'').toLowerCase();
+  renderMergeCandidates();
+}
+
+function renderMergeCandidates() {
+  const q = MERGE_STATE.memberSearch;
+  const candidates = Object.values(MERGE_STATE.usage)
+    .filter(u => u.remaining > 0 || MERGE_STATE.selectedMembers.includes(u.owner_id))
+    .filter(u => !q || (u.name||'').toLowerCase().includes(q) || String(u.serial_no||'').includes(q))
+    .sort((a,b) => String(a.serial_no).padStart(8,'0').localeCompare(String(b.serial_no).padStart(8,'0')));
+
+  const el = document.getElementById('merge-candidates');
+  if (!el) return;
+  el.innerHTML = candidates.map(u => {
+    const checked = MERGE_STATE.selectedMembers.includes(u.owner_id);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:6px;${checked?'background:var(--brand-bg);':''}">
+      <input type="checkbox" value="${u.owner_id}" ${checked?'checked':''}
+        onchange="toggleMergeMember('${u.owner_id}')" style="width:auto;">
+      <span style="flex:1;">${u.serial_no||''} ${u.name}</span>
+      <span class="text-xs text-muted">剩餘 NT$${fmt(u.remaining)}</span>
+    </label>`;
+  }).join('') || '<div class="text-xs text-muted" style="padding:10px;">無符合的地主</div>';
 }
 
 function toggleMergeMember(ownerId) {
   const i = MERGE_STATE.selectedMembers.indexOf(ownerId);
-  if (i >= 0) MERGE_STATE.selectedMembers.splice(i,1);
-  else MERGE_STATE.selectedMembers.push(ownerId);
-  updateMergeInvestSummary();
+  if (i >= 0) {
+    MERGE_STATE.selectedMembers.splice(i,1);
+    delete MERGE_STATE.invest[ownerId];
+  } else {
+    MERGE_STATE.selectedMembers.push(ownerId);
+    // 預設投入 = 剩餘全額
+    MERGE_STATE.invest[ownerId] = MERGE_STATE.usage[ownerId]?.remaining || 0;
+  }
+  renderMergeCandidates();
+  recalcMerge();
 }
 
-function getMergeMembers() {
-  // 每人投入 = 剩餘權值全部
-  return MERGE_STATE.selectedMembers.map(oid => ({
-    owner_id: oid,
-    invested: MERGE_STATE.usage[oid]?.remaining || 0,
-  }));
+// 改某人金額
+function setMergeAmount(ownerId, val) {
+  MERGE_STATE.invest[ownerId] = Math.max(0, Math.round(Number(val)||0));
+  recalcMerge(true);  // skipAmountRender: 不重繪金額輸入框（避免游標跳走）
 }
 
-function updateMergeInvestSummary() {
-  const members = getMergeMembers();
-  const total = members.reduce((s,m) => s+m.invested, 0);
-  const limit = Math.round(total * 1.1);
-  const el = document.getElementById('merge-invest-summary');
-  if (!el) return;
-  if (!members.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div style="background:var(--brand-bg);border-radius:6px;padding:8px 10px;font-size:12px;">
-    <div class="flex justify-between"><span>合併權值基礎（${members.length}人）</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
-    <div class="flex justify-between"><span class="text-muted">選配上限 110%</span><span>NT$${fmt(limit)}</span></div>
-  </div>`;
+// 改某人比例（%）→ 換算金額（以選配總價為基準）
+function setMergeRatio(ownerId, pct) {
+  const total = MERGE_STATE.mergeTotal || 0;
+  MERGE_STATE.invest[ownerId] = Math.round(total * (Number(pct)||0) / 100);
+  recalcMerge(false);
 }
 
-async function previewMerge() {
-  const members = getMergeMembers();
-  if (members.length < 2) { alert('合併組至少需要 2 人'); return; }
-  const units = expandCodeList(document.getElementById('merge-units').value);
-  const parks = expandCodeList(document.getElementById('merge-parks').value);
+// 重新計算選配總價 + 出資 + 檢核
+function recalcMerge(skipAmountRender) {
+  const unitMap = MERGE_STATE.unitMap || {};
+  const parkMap = MERGE_STATE.parkMap || {};
+  const units = expandCodeList(document.getElementById('merge-units')?.value || '');
+  const parks = expandCodeList(document.getElementById('merge-parks')?.value || '');
 
-  const el = document.getElementById('merge-preview');
-  el.innerHTML = '<div class="text-xs text-muted">試算中…</div>';
+  // 選配總價
+  let total = 0, codeErrs = [];
+  units.forEach(u => unitMap[u] ? total += unitMap[u].total_value : codeErrs.push(u));
+  parks.forEach(p => parkMap[p] ? total += parkMap[p].price : codeErrs.push(p));
+  MERGE_STATE.mergeTotal = total;
 
-  const [unitMap, parkMap] = await Promise.all([apiGet('getUnits'), apiGet('getParking')]);
-  let total = 0, errs = [];
-  units.forEach(u => unitMap[u] ? total += unitMap[u].total_value : errs.push(`戶別 ${u} 不存在`));
-  parks.forEach(p => parkMap[p] ? total += parkMap[p].price : errs.push(`車位 ${p} 不存在`));
+  const members = MERGE_STATE.selectedMembers;
+  const investTotal = members.reduce((s,oid) => s + (MERGE_STATE.invest[oid]||0), 0);
 
-  if (errs.length) { el.innerHTML = `<div style="background:var(--red-bg);color:var(--red-text);padding:8px;border-radius:6px;font-size:12px;">${errs.join('<br>')}</div>`; return; }
+  // 各人出資輸入列
+  if (!skipAmountRender) {
+    const rowsEl = document.getElementById('merge-invest-rows');
+    if (rowsEl) {
+      rowsEl.innerHTML = members.map(oid => {
+        const u = MERGE_STATE.usage[oid] || {};
+        const amt = MERGE_STATE.invest[oid] || 0;
+        const pct = total > 0 ? (amt/total*100) : 0;
+        const overRemain = amt > (u.remaining||0) + 1;
+        return `<div style="display:grid;grid-template-columns:1fr 110px 78px;gap:6px;align-items:center;margin-bottom:5px;">
+          <span style="font-size:12px;">${u.serial_no||''} ${u.name||oid}
+            <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(u.remaining||0)}）</span></span>
+          <input type="number" value="${amt}" oninput="setMergeAmount('${oid}', this.value)"
+            style="font-size:12px;padding:4px 8px;${overRemain?'border-color:var(--red);':''}" placeholder="金額">
+          <input type="number" value="${pct.toFixed(1)}" oninput="setMergeRatio('${oid}', this.value)"
+            style="font-size:12px;padding:4px 8px;" placeholder="%" step="0.1">
+        </div>`;
+      }).join('');
+    }
+  } else {
+    // 只更新比例欄（金額框不動）
+    const rowsEl = document.getElementById('merge-invest-rows');
+    if (rowsEl) {
+      members.forEach((oid, i) => {
+        const amt = MERGE_STATE.invest[oid]||0;
+        const pct = total>0 ? (amt/total*100) : 0;
+        const inputs = rowsEl.children[i]?.querySelectorAll('input');
+        if (inputs && inputs[1]) inputs[1].value = pct.toFixed(1);
+      });
+    }
+  }
 
-  const combinedRights = members.reduce((s,m) => s+m.invested, 0);
-  const limit = Math.round(combinedRights*1.1);
-  const settle = total - combinedRights;
-  const over = total > limit;
+  // 檢核
+  const checkEl = document.getElementById('merge-check');
+  const submitBtn = document.getElementById('merge-submit-btn');
+  if (!checkEl) return;
 
-  const splitRows = members.map(m => {
-    const ratio = combinedRights>0 ? m.invested/combinedRights : 0;
+  const diff = investTotal - total;
+  const limit = Math.round(investTotal * 1.1);
+  const overLimit = total > limit && investTotal > 0;
+  const overRemainAny = members.some(oid => (MERGE_STATE.invest[oid]||0) > (MERGE_STATE.usage[oid]?.remaining||0) + 1);
+  const hasMembers = members.length >= 2;
+  const hasSelection = (units.length + parks.length) > 0;
+
+  let problems = [];
+  if (codeErrs.length) problems.push(`代號不存在：${codeErrs.join('、')}`);
+  if (!hasMembers) problems.push('合併組至少需要 2 人');
+  if (!hasSelection) problems.push('請輸入選配戶別或車位');
+  if (hasSelection && Math.abs(diff) > 1) problems.push(`出資加總與選配總價不符，差額 NT$${fmt(Math.abs(diff))}（${diff>0?'多出':'不足'}）`);
+  if (overRemainAny) problems.push('有人投入超過其剩餘額度');
+  if (overLimit) problems.push('選配總價超過合併上限 110%');
+
+  const canSubmit = problems.length === 0;
+
+  // 找補拆分（以投入比例）
+  const settle = total - investTotal;
+  const splitRows = members.map(oid => {
+    const ratio = investTotal>0 ? (MERGE_STATE.invest[oid]||0)/investTotal : 0;
     const s = Math.round(settle*ratio);
-    const u = MERGE_STATE.usage[m.owner_id];
+    const u = MERGE_STATE.usage[oid]||{};
     return `<div class="flex justify-between text-xs" style="padding:2px 0;">
-      <span>${u?u.name:m.owner_id}（${Math.round(ratio*100)}%）</span>
+      <span>${u.name||oid}（${Math.round(ratio*100)}%）</span>
       <span style="color:${s>0?'var(--red-text)':s<0?'var(--green-text)':'var(--tt)'};">${s>0?'補 '+fmt(s):s<0?'退 '+fmt(-s):'—'}</span>
     </div>`;
   }).join('');
 
-  el.innerHTML = `<div style="background:var(--cs);border-radius:6px;padding:10px 12px;font-size:12px;">
-    <div class="flex justify-between mb-4"><span class="text-muted">選配總價</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
-    <div class="flex justify-between mb-4"><span class="text-muted">合併權值基礎</span><span>NT$${fmt(combinedRights)}</span></div>
-    <div class="flex justify-between mb-4"><span class="text-muted">組找補</span>
-      <span style="font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
-      ${settle>0?'補繳 '+fmt(settle):settle<0?'退還 '+fmt(-settle):'無'}</span></div>
-    ${over?`<div style="background:var(--orange-bg);color:var(--orange-text);padding:4px 8px;border-radius:4px;margin:6px 0;">⚠ 超過合併上限 110%</div>`:''}
-    <div style="border-top:0.5px solid var(--bt);margin-top:6px;padding-top:6px;">
-      <div class="text-muted mb-4">找補拆分：</div>${splitRows}
+  checkEl.innerHTML = `
+    <div style="background:var(--cs);border-radius:6px;padding:10px 12px;font-size:12px;">
+      <div class="flex justify-between mb-4"><span class="text-muted">選配總價</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
+      <div class="flex justify-between mb-4"><span class="text-muted">出資加總</span>
+        <span style="font-weight:500;color:${Math.abs(diff)<=1?'var(--green-text)':'var(--red-text)'};">NT$${fmt(investTotal)}</span></div>
+      <div class="flex justify-between mb-4"><span class="text-muted">差額（須為 0）</span>
+        <span style="font-weight:500;color:${Math.abs(diff)<=1?'var(--green-text)':'var(--red-text)'};">${diff===0?'✓ 0':(diff>0?'+':'')+fmt(diff)}</span></div>
+      <div class="flex justify-between"><span class="text-muted">合併上限 110%</span><span>NT$${fmt(limit)}</span></div>
+      ${total>0?`<div style="border-top:0.5px solid var(--bt);margin-top:6px;padding-top:6px;">
+        <div class="text-muted mb-4">找補拆分：</div>${splitRows}</div>`:''}
     </div>
-  </div>`;
+    ${problems.length?`<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:6px;font-size:12px;margin-top:8px;">
+      <i class="ti ti-alert-circle"></i> 無法送出：<br>${problems.map(p=>'· '+p).join('<br>')}</div>`:
+      `<div style="background:var(--green-bg);color:var(--green-text);padding:8px 10px;border-radius:6px;font-size:12px;margin-top:8px;">
+      <i class="ti ti-circle-check"></i> 檢核通過，可以送出</div>`}
+  `;
+
+  if (submitBtn) {
+    submitBtn.disabled = !canSubmit;
+    submitBtn.style.opacity = canSubmit ? '1' : '0.45';
+    submitBtn.style.cursor = canSubmit ? 'pointer' : 'not-allowed';
+  }
 }
 
 async function submitMerge() {
-  const members = getMergeMembers();
-  if (members.length < 2) { alert('合併組至少需要 2 人'); return; }
   const units = expandCodeList(document.getElementById('merge-units').value);
   const parks = expandCodeList(document.getElementById('merge-parks').value);
+  const members = MERGE_STATE.selectedMembers.map(oid => ({
+    owner_id: oid, invested: MERGE_STATE.invest[oid]||0,
+  }));
+
+  // 前端再次硬擋（與檢核一致）
+  const total = MERGE_STATE.mergeTotal || 0;
+  const investTotal = members.reduce((s,m)=>s+m.invested,0);
+  if (members.length < 2) { alert('合併組至少需要 2 人'); return; }
   if (!units.length && !parks.length) { alert('請輸入選配戶別或車位'); return; }
+  if (Math.abs(investTotal - total) > 1) { alert('出資加總與選配總價不符，無法送出'); return; }
+  if (total > Math.round(investTotal*1.1)) { alert('選配總價超過合併上限，無法送出'); return; }
+  if (members.some(m => m.invested > (MERGE_STATE.usage[m.owner_id]?.remaining||0)+1)) { alert('有人投入超過剩餘額度，無法送出'); return; }
 
   try {
     await apiPost('saveMergeGroup', {
