@@ -144,6 +144,7 @@ tr.selected td{background:#EDF5FB;}
       <div class="nav-item" id="nav-merge" onclick="navTo('merge')"><i class="ti ti-users"></i>合併管理</div>
       <div class="nav-item" id="nav-lottery" onclick="navTo('lottery')"><i class="ti ti-chart-pie"></i>選屋總覽</div>
       <div class="nav-item" id="nav-calls" onclick="navTo('calls')"><i class="ti ti-phone"></i>電話記錄</div>
+      <div class="nav-item" id="nav-contacts" onclick="navTo('contacts')"><i class="ti ti-address-book"></i>通訊錄</div>
       <div class="nav-item" id="nav-announce" onclick="navTo('announce')"><i class="ti ti-speakerphone"></i>公告管理</div>
       <div class="nav-section">報表</div>
       <div class="nav-item" id="nav-settle" onclick="navTo('settle')"><i class="ti ti-coin"></i>找補彙總</div>
@@ -163,9 +164,6 @@ tr.selected td{background:#EDF5FB;}
         <div class="flex items-center gap-8 mb-12" style="flex-wrap:wrap;">
           <input type="text" id="search" placeholder="搜尋姓名 / 編號…"
             style="width:200px;" oninput="filterOwners()">
-          <button class="btn-secondary" onclick="openOwnerModal(null)" style="margin-left:auto;font-size:12px;padding:5px 12px;">
-            <i class="ti ti-plus"></i> 新增地主
-          </button>
         </div>
 
         <!-- Filter chips -->
@@ -224,6 +222,23 @@ tr.selected td{background:#EDF5FB;}
           </select>
         </div>
         <div id="call-rows" style="min-height:200px;"></div>
+      </div>
+
+      <!-- ===== CONTACTS VIEW ===== -->
+      <div id="view-contacts" style="display:none;">
+        <div class="flex items-center justify-between mb-12">
+          <h2 style="font-size:16px;font-weight:500;">通訊錄</h2>
+        </div>
+        <input type="text" id="contacts-search" placeholder="搜尋姓名…"
+          style="width:100%;margin-bottom:12px;" oninput="renderContacts()">
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div style="display:grid;grid-template-columns:56px 1fr 140px 1fr 100px;
+            padding:7px 14px;background:var(--cs);gap:8px;border-bottom:0.5px solid var(--bt);">
+            ${['編號','姓名','電話','地址','負責承辦'].map(h =>
+              `<span class="text-xs text-muted font-medium">${h}</span>`).join('')}
+          </div>
+          <div id="contacts-rows"></div>
+        </div>
       </div>
 
       <!-- ===== ANNOUNCEMENT VIEW ===== -->
@@ -852,20 +867,26 @@ async function submitSelection(ownerId, status) {
   const btn = document.querySelector('#modal-box .btn-primary, #modal-box .btn-success');
   btnLoading(btn, '儲存中…');
   try {
-    // 若電話或地址有填且跟原本不同，先更新地主通訊資料
     const owner = STATE.owners.find(o => o.owner_id == ownerId);
+    const newPhone   = phone || owner?.phone || '';
+    const newAddress = address || owner?.address || '';
     if ((phone && phone !== owner?.phone) || (address && address !== owner?.address)) {
       await apiPost('saveOwner', {
         owner_id: ownerId,
         name: owner?.name || '',
-        phone: phone || owner?.phone || '',
-        address: address || owner?.address || '',
+        phone: newPhone,
+        address: newAddress,
         rights_value: owner?.rights_value || 0,
         handler: owner?.handler || '',
         participate: owner?.participate || 'true',
         has_agent: owner?.has_agent || 'false',
         agent_name: owner?.agent_name || '',
       });
+    }
+    // 立即更新 STATE.owners，讓列印可以即時拿到新資料（不等重新載入）
+    if (owner) {
+      owner.phone   = newPhone;
+      owner.address = newAddress;
     }
     await apiPost('saveSelection', {
       owner_id: ownerId, unit_nos: units, parking_nos: parks,
@@ -1232,17 +1253,56 @@ async function doExport() {
 //  NAVIGATION
 // ============================================================
 function navTo(view) {
-  ['list','merge','lottery','calls','announce','settle','settings'].forEach(v => {
+  ['list','merge','lottery','calls','contacts','announce','settle','settings'].forEach(v => {
     const el = document.getElementById('view-'+v);
     if (el) el.style.display = v === view ? '' : 'none';
     const nav = document.getElementById('nav-'+v);
     if (nav) nav.classList.toggle('active', v === view);
   });
   if (view === 'calls') loadCallLog().then(renderCallLog);
+  if (view === 'contacts') renderContacts();
   if (view === 'announce') loadAnnounceList();
   if (view === 'merge') loadMergeGroups();
   if (view === 'lottery') loadDashboard();
   if (view === 'settle') loadSettle();
+}
+
+// ============================================================
+//  通訊錄
+// ============================================================
+function renderContacts() {
+  const q = (document.getElementById('contacts-search')?.value || '').toLowerCase();
+  const list = [...STATE.owners]
+    .filter(o => !q || (o.name||'').toLowerCase().includes(q))
+    .sort((a,b) => String(a.serial_no||'').padStart(8,'0').localeCompare(String(b.serial_no||'').padStart(8,'0')));
+
+  const rows = list.map(o => `
+    <div style="display:grid;grid-template-columns:56px 1fr 140px 1fr 100px;
+      align-items:center;padding:9px 14px;border-bottom:0.5px solid var(--bt);gap:8px;font-size:12px;">
+      <div class="text-muted">${o.serial_no||''}</div>
+      <div style="font-weight:500;">${o.name||''}
+        ${(o.has_agent==='true'||o.has_agent===true)?
+          `<span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;margin-left:4px;">代理</span>`:''}</div>
+      <div>
+        ${o.phone
+          ? `<span style="color:var(--tp);">${o.phone}</span>
+             <button onclick="callOwner('${o.owner_id}','${o.name}')" title="記錄通話"
+               style="background:none;border:none;cursor:pointer;color:var(--brand-text);padding:0 4px;font-size:13px;">
+               <i class="ti ti-phone-plus"></i></button>`
+          : `<span class="text-muted text-xs">未填</span>`}
+      </div>
+      <div class="text-muted">${o.address||'—'}</div>
+      <div class="text-muted text-xs">${o.handler||'—'}</div>
+    </div>`).join('') || '<div style="padding:40px;text-align:center;color:var(--tt);">無通訊錄資料</div>';
+
+  const el = document.getElementById('contacts-rows');
+  if (el) el.innerHTML = rows;
+}
+
+// 從通訊錄點「記錄通話」→ 跳到電話記錄並帶入地主
+function callOwner(ownerId, name) {
+  navTo('calls');
+  setTimeout(() => openCallModal(ownerId), 100);
 }
 
 function renderCallLog() {
@@ -1979,9 +2039,10 @@ function renderSettle(data) {
       </div>
       <div class="stat-card">
         <div class="stat-n" style="color:${(sum.net||0)>0?'var(--red-text)':(sum.net||0)<0?'var(--green-text)':'var(--tt)'};">
-          NT$${fmt(Math.abs(sum.net||0))}</div>
+          ${(sum.net||0)>0?'▲':''}${(sum.net||0)<0?'▼':''} NT$${fmt(Math.abs(sum.net||0))}</div>
         <div class="stat-l">淨額</div>
-        <div class="text-xs text-muted">${(sum.net||0)>0?'整體需補差':(sum.net||0)<0?'整體需退款':'持平'}</div>
+        <div style="font-size:11px;font-weight:600;color:${(sum.net||0)>0?'var(--red-text)':(sum.net||0)<0?'var(--green-text)':'var(--tt)'};">
+          ${(sum.net||0)>0?'→ 整體需補差':(sum.net||0)<0?'→ 整體需退款':'持平'}</div>
       </div>
     </div>
 
