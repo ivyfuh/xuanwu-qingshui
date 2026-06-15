@@ -234,8 +234,11 @@ tr.selected td{background:#EDF5FB;}
         <div class="card" style="padding:0;overflow:hidden;">
           <div style="display:grid;grid-template-columns:56px 1fr 140px 1fr 100px;
             padding:7px 14px;background:var(--cs);gap:8px;border-bottom:0.5px solid var(--bt);">
-            ${['編號','姓名','電話','地址','負責承辦'].map(h =>
-              `<span class="text-xs text-muted font-medium">${h}</span>`).join('')}
+            <span class="text-xs text-muted font-medium">編號</span>
+            <span class="text-xs text-muted font-medium">姓名</span>
+            <span class="text-xs text-muted font-medium">電話</span>
+            <span class="text-xs text-muted font-medium">地址</span>
+            <span class="text-xs text-muted font-medium">負責承辦</span>
           </div>
           <div id="contacts-rows"></div>
         </div>
@@ -1460,11 +1463,31 @@ function printApplication(ownerId) {
   const sel   = getSelForOwner(ownerId);
   if (!owner) return;
 
-  const cfg = STATE.cfg || {};
+  const cfg = STATE.caseConfig || {};
   const caseName = cfg.case_name || '清水段';
 
-  const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
-  const parkNos = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
+  // 個人選配
+  const personalUnits = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
+  const personalParks = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
+
+  // 合併選配（從 MERGE_STATE 取，加標注共有）
+  const mergeUnits = [], mergeParks = [];
+  if (MERGE_STATE && MERGE_STATE.groups) {
+    MERGE_STATE.groups.forEach(g => {
+      const isMember = (g.members||[]).some(m => m.owner_id === ownerId);
+      if (!isMember) return;
+      const gUnits = Array.isArray(g.unit_nos) ? g.unit_nos : JSON.parse(g.unit_nos||'[]');
+      const gParks = Array.isArray(g.parking_nos) ? g.parking_nos : JSON.parse(g.parking_nos||'[]');
+      const n = (g.members||[]).length;
+      gUnits.forEach(u => mergeUnits.push(`${u}（共有 1/${n}）`));
+      gParks.forEach(p => mergeParks.push(`${p}（共有 1/${n}）`));
+    });
+  }
+
+  const allUnits = [...personalUnits, ...mergeUnits];
+  const allParks = [...personalParks, ...mergeParks];
+  const unitNos = allUnits;
+  const parkNos = allParks;
 
   const today = new Date();
   const rocYear = today.getFullYear() - 1911;
