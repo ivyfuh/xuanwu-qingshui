@@ -1505,7 +1505,7 @@ function setMergeRatio(ownerId, pct) {
   recalcMerge(true);
 }
 
-// 按各人剩餘權值比例，自動分攤選配總價
+// 按各人剩餘權值比例，自動分攤選配總價（各人出資加總 = 選配總價）
 function autoDistributeInvest(total) {
   const members = MERGE_STATE.selectedMembers;
   const remainSum = members.reduce((s,oid) => s + (MERGE_STATE.usage[oid]?.remaining||0), 0);
@@ -1517,7 +1517,8 @@ function autoDistributeInvest(total) {
   members.forEach((oid, i) => {
     const remain = MERGE_STATE.usage[oid]?.remaining || 0;
     if (i === members.length - 1) {
-      MERGE_STATE.invest[oid] = total - allocated;  // 最後一人吃進位差，確保加總=total
+      // 最後一人吃進位差，確保加總精確等於選配總價
+      MERGE_STATE.invest[oid] = total - allocated;
     } else {
       const amt = Math.round(total * remain / remainSum);
       MERGE_STATE.invest[oid] = amt;
@@ -1604,50 +1605,56 @@ function recalcMerge(skipAmountRender) {
   const submitBtn = document.getElementById('merge-submit-btn');
   if (!checkEl) return;
 
-  const diff = investTotal - total;
-  const limit = Math.round(investTotal * 1.1);
-  const overLimit = total > limit && investTotal > 0;
-  const overRemainAny = members.some(oid => (MERGE_STATE.invest[oid]||0) > (MERGE_STATE.usage[oid]?.remaining||0) + 1);
+  // 各人剩餘、個人110%上限
+  const remainSum   = members.reduce((s,oid) => s + (MERGE_STATE.usage[oid]?.remaining||0), 0);
+  const combinedLimit = members.reduce((s,oid) => {
+    const rem = MERGE_STATE.usage[oid]?.remaining||0;
+    return s + Math.round(rem * 1.1);
+  }, 0);
+  const overLimit = total > combinedLimit && total > 0;
   const hasMembers = members.length >= 2;
   const hasSelection = (units.length + parks.length) > 0;
 
-  let problems = [];
-  if (codeErrs.length) problems.push(`代號不存在：${codeErrs.join('、')}`);
-  if (!hasMembers) problems.push('合併組至少需要 2 人');
-  if (!hasSelection) problems.push('請輸入選配戶別或車位');
-  if (hasSelection && Math.abs(diff) > 1) problems.push(`出資加總與選配總價不符，差額 NT$${fmt(Math.abs(diff))}（${diff>0?'多出':'不足'}）`);
-  if (overRemainAny) problems.push('有人投入超過其剩餘額度');
-  if (overLimit) problems.push('選配總價超過合併上限 110%');
-
-  const canSubmit = problems.length === 0;
-
-  // 找補拆分（以投入比例）
-  const settle = total - investTotal;
+  // 各人找補：實際出資 − 個人剩餘（正=補差，負=退款）
   const splitRows = members.map(oid => {
-    const ratio = investTotal>0 ? (MERGE_STATE.invest[oid]||0)/investTotal : 0;
-    const s = Math.round(settle*ratio);
     const u = MERGE_STATE.usage[oid]||{};
-    return `<div class="flex justify-between text-xs" style="padding:2px 0;">
-      <span>${u.name||oid}（${Math.round(ratio*100)}%）</span>
+    const remaining = u.remaining||0;
+    const invested = MERGE_STATE.invest[oid]||0;
+    const pct = remainSum > 0 ? Math.round(remaining/remainSum*100) : 0;
+    const s = invested - remaining;  // 出資 − 剩餘 = 找補
+    const overPersonal = invested > Math.round(remaining*1.1);
+    return `<div class="flex justify-between text-xs" style="padding:3px 0;">
+      <span>${u.name||oid}
+        <span class="text-muted">（剩餘${fmt(remaining)}，佔${pct}%，出${fmt(invested)}）</span>
+        ${overPersonal?`<span style="color:var(--red-text);"> ⚠ 超個人上限</span>`:''}
+      </span>
       <span style="color:${s>0?'var(--red-text)':s<0?'var(--green-text)':'var(--tt)'};">${s>0?'補 '+fmt(s):s<0?'退 '+fmt(-s):'—'}</span>
     </div>`;
   }).join('');
 
+  // 擋住條件：超過合併上限 OR 基本資料不完整
+  let problems = [];
+  if (codeErrs.length) problems.push(`代號不存在：${codeErrs.join('、')}`);
+  if (!hasMembers) problems.push('合併組至少需要 2 人');
+  if (!hasSelection) problems.push('請輸入選配戶別或車位');
+  if (overLimit) problems.push(`選配總價 NT$${fmt(total)} 超過合併上限 NT$${fmt(combinedLimit)}（各人剩餘×110%加總），不能選`);
+
+  const canSubmit = problems.length === 0;
+
   checkEl.innerHTML = `
     <div style="background:var(--cs);border-radius:6px;padding:10px 12px;font-size:12px;">
-      <div class="flex justify-between mb-4"><span class="text-muted">選配總價</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
-      <div class="flex justify-between mb-4"><span class="text-muted">出資加總</span>
-        <span style="font-weight:500;color:${Math.abs(diff)<=1?'var(--green-text)':'var(--red-text)'};">NT$${fmt(investTotal)}</span></div>
-      <div class="flex justify-between mb-4"><span class="text-muted">差額（須為 0）</span>
-        <span style="font-weight:500;color:${Math.abs(diff)<=1?'var(--green-text)':'var(--red-text)'};">${diff===0?'✓ 0':(diff>0?'+':'')+fmt(diff)}</span></div>
-      <div class="flex justify-between"><span class="text-muted">合併上限 110%</span><span>NT$${fmt(limit)}</span></div>
-      ${total>0?`<div style="border-top:0.5px solid var(--bt);margin-top:6px;padding-top:6px;">
-        <div class="text-muted mb-4">找補拆分：</div>${splitRows}</div>`:''}
+      <div class="flex justify-between mb-2"><span class="text-muted">選配總價</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
+      <div class="flex justify-between mb-2"><span class="text-muted">剩餘加總</span><span>NT$${fmt(remainSum)}</span></div>
+      <div class="flex justify-between mb-2"><span class="text-muted">合併上限（×110%）</span>
+        <span style="font-weight:500;color:${overLimit?'var(--red-text)':'var(--tp)'};">NT$${fmt(combinedLimit)}</span></div>
+      ${total>0&&members.length>0?`<div style="border-top:0.5px solid var(--bt);margin-top:6px;padding-top:6px;">
+        <div class="text-muted mb-4">各人出資與找補：</div>${splitRows}</div>`:''}
     </div>
-    ${problems.length?`<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:6px;font-size:12px;margin-top:8px;">
-      <i class="ti ti-alert-circle"></i> 無法送出：<br>${problems.map(p=>'· '+p).join('<br>')}</div>`:
-      `<div style="background:var(--green-bg);color:var(--green-text);padding:8px 10px;border-radius:6px;font-size:12px;margin-top:8px;">
-      <i class="ti ti-circle-check"></i> 檢核通過，可以送出</div>`}
+    ${problems.length
+      ? `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:6px;font-size:12px;margin-top:8px;">
+          <i class="ti ti-alert-circle"></i> 不能送出：<br>${problems.map(p=>'· '+p).join('<br>')}</div>`
+      : `<div style="background:var(--green-bg);color:var(--green-text);padding:8px 10px;border-radius:6px;font-size:12px;margin-top:8px;">
+          <i class="ti ti-circle-check"></i> 檢核通過，可以送出</div>`}
   `;
 
   if (submitBtn) {
@@ -1665,14 +1672,15 @@ async function submitMerge() {
     owner_id: oid, invested: MERGE_STATE.invest[oid]||0,
   }));
 
-  // 前端再次硬擋（與檢核一致）
-  const total = MERGE_STATE.mergeTotal || 0;
-  const investTotal = members.reduce((s,m)=>s+m.invested,0);
+  // 前端硬擋（與後端一致）
+  const remainSum2 = members.reduce((s,m) => s + (MERGE_STATE.usage[m.owner_id]?.remaining||0), 0);
+  const combinedLimit2 = members.reduce((s,m) => {
+    const rem = MERGE_STATE.usage[m.owner_id]?.remaining||0;
+    return s + Math.round(rem*1.1);
+  }, 0);
   if (members.length < 2) { alert('合併組至少需要 2 人'); return; }
   if (!units.length && !parks.length) { alert('請輸入選配戶別或車位'); return; }
-  if (Math.abs(investTotal - total) > 1) { alert('出資加總與選配總價不符，無法送出'); return; }
-  if (total > Math.round(investTotal*1.1)) { alert('選配總價超過合併上限，無法送出'); return; }
-  if (members.some(m => m.invested > (MERGE_STATE.usage[m.owner_id]?.remaining||0)+1)) { alert('有人投入超過剩餘額度，無法送出'); return; }
+  if (total > combinedLimit2) { alert(`選配總價超過合併上限 NT$${fmt(combinedLimit2)}，不能送出`); return; }
 
   MERGE_STATE.submitting = true;
   const btn = document.getElementById('merge-submit-btn');
