@@ -82,6 +82,7 @@ tr.selected td{background:#EDF5FB;}
 /* Progress bar */
 .pbar-bg{height:6px;background:var(--ct);border-radius:3px;overflow:hidden;}
 .pbar-fill{height:100%;border-radius:3px;transition:width .3s;}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Modal */
 #modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
@@ -141,7 +142,7 @@ tr.selected td{background:#EDF5FB;}
       <div class="nav-section">選配作業</div>
       <div class="nav-item active" id="nav-list" onclick="navTo('list')"><i class="ti ti-clipboard-list"></i>地主清單</div>
       <div class="nav-item" id="nav-merge" onclick="navTo('merge')"><i class="ti ti-users"></i>合併管理</div>
-      <div class="nav-item" id="nav-lottery" onclick="navTo('lottery')"><i class="ti ti-dice"></i>重複/抽籤</div>
+      <div class="nav-item" id="nav-lottery" onclick="navTo('lottery')"><i class="ti ti-chart-pie"></i>選屋總覽</div>
       <div class="nav-item" id="nav-calls" onclick="navTo('calls')"><i class="ti ti-phone"></i>電話記錄</div>
       <div class="nav-item" id="nav-announce" onclick="navTo('announce')"><i class="ti ti-speakerphone"></i>公告管理</div>
       <div class="nav-section">報表</div>
@@ -248,9 +249,14 @@ tr.selected td{background:#EDF5FB;}
         <div class="text-xs text-muted mb-16">合併選配：多位地主將剩餘權值合併，共同選配戶別車位。找補按各人投入權值比例拆回。</div>
         <div id="merge-list"></div>
       </div>
-      <div id="view-lottery"  style="display:none;padding:60px;text-align:center;color:var(--tt);">
-        <i class="ti ti-dice" style="font-size:40px;display:block;margin-bottom:12px;"></i>
-        <div style="font-size:15px;">抽籤管理 — Phase 2</div>
+      <div id="view-lottery" style="display:none;">
+        <div class="flex items-center justify-between mb-16">
+          <h2 style="font-size:16px;font-weight:500;">選屋總覽</h2>
+          <button class="btn-secondary" onclick="loadDashboard()"><i class="ti ti-refresh"></i> 重新整理</button>
+        </div>
+        <div id="dashboard-content">
+          <div style="text-align:center;color:var(--tt);padding:40px;">載入中…</div>
+        </div>
       </div>
       <div id="view-settle"   style="display:none;padding:60px;text-align:center;color:var(--tt);">
         <i class="ti ti-coin" style="font-size:40px;display:block;margin-bottom:12px;"></i>
@@ -758,7 +764,10 @@ function previewSelection(ownerId) {
   const units  = expandCodeList(document.getElementById('sel-units').value);
   const parks  = expandCodeList(document.getElementById('sel-parks').value);
   const rights = Number(owner?.rights_value)||0;
-  const limit  = Number(owner?.upper_limit)||0;
+  // 個人上限 = 110%上限 - 已投入合併組（若有 usage 資料則用，否則用 upper_limit）
+  const usage  = MERGE_STATE?.usage?.[ownerId];
+  const mergeInvested = usage ? (Number(usage.merge_invested)||0) : 0;
+  const limit  = Number(owner?.upper_limit||0) - mergeInvested;
 
   // Simple validation + calc
   let total = 0;
@@ -800,13 +809,9 @@ async function submitSelection(ownerId, status) {
   const units  = expandCodeList(document.getElementById('sel-units').value);
   const parks  = expandCodeList(document.getElementById('sel-parks').value);
   const date   = document.getElementById('sel-date').value;
-  const reason = document.getElementById('sel-reason').value;
-
-  if (status === 'confirmed' && !reason) {
-    alert('正式登錄需填寫修改原因');
-    return;
-  }
-
+  const reason = document.getElementById('sel-reason')?.value || '';
+  const btn = document.querySelector('#modal-box .btn-primary');
+  btnLoading(btn, '儲存中…');
   try {
     await apiPost('saveSelection', {
       owner_id: ownerId, unit_nos: units, parking_nos: parks,
@@ -816,24 +821,24 @@ async function submitSelection(ownerId, status) {
     await loadSelections();
     renderOwnerList();
     renderOwnerDetail(ownerId);
-  } catch(e) { alert('儲存失敗：' + e.message); }
+  } catch(e) { btnReset(btn); alert('儲存失敗：' + e.message); }
 }
 
 async function confirmSelection(ownerId) {
-  const reason = prompt('請輸入正式登錄原因：');
-  if (!reason) return;
+  const btn = document.querySelector(`[onclick="confirmSelection('${ownerId}')"]`);
+  btnLoading(btn, '登錄中…');
   try {
     const sel = getSelForOwner(ownerId);
     const units = Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]');
     const parks = Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]');
     await apiPost('saveSelection', {
       owner_id: ownerId, unit_nos: units, parking_nos: parks,
-      status: 'confirmed', form_date: sel.form_date, change_reason: reason,
+      status: 'confirmed', form_date: sel.form_date, change_reason: '',
     });
     await loadSelections();
     renderOwnerList();
     renderOwnerDetail(ownerId);
-  } catch(e) { alert('失敗：' + e.message); }
+  } catch(e) { btnReset(btn); alert('失敗：' + e.message); }
 }
 
 // ============================================================
@@ -904,12 +909,14 @@ async function submitOwner(ownerId) {
   if (idVal) data.id_number = idVal;
   if (ownerId) data.owner_id = ownerId;
   if (!data.name) { alert('姓名為必填'); return; }
+  const btn = document.querySelector('#modal-box .btn-primary');
+  btnLoading(btn, '儲存中…');
   try {
     await apiPost('saveOwner', data);
     closeModal();
     await loadOwners();
     renderOwnerList();
-  } catch(e) { alert('儲存失敗：' + e.message); }
+  } catch(e) { btnReset(btn); alert('儲存失敗：' + e.message); }
 }
 
 // ============================================================
@@ -935,7 +942,7 @@ function openCallModal(ownerId) {
     <div class="grid-2 mb-12">
       <div><div class="field-label">通話類型</div>
         <select id="c-type" onchange="toggleCallerName()">
-          <option>去電</option><option>來電</option><option>未接</option><option>漏接</option>
+          <option>去電</option><option>來電</option>
         </select>
       </div>
       <div><div class="field-label">通話時間</div>
@@ -1007,6 +1014,8 @@ async function submitCallLog() {
   const ownerId = document.getElementById('c-owner-id').value;
   const owner   = STATE.owners.find(o => o.owner_id == ownerId);
   if (!ownerId) { alert('請選擇地主'); return; }
+  const btn = document.querySelector('#modal-box .btn-primary');
+  btnLoading(btn, '儲存中…');
   try {
     await apiPost('addCallLog', {
       owner_id:       ownerId,
@@ -1021,22 +1030,31 @@ async function submitCallLog() {
     });
     closeModal();
     loadCallLog().then(renderCallLog);
-  } catch(e) { alert('儲存失敗：' + e.message); }
+  } catch(e) { btnReset(btn); alert('儲存失敗：' + e.message); }
 }
 
-async function recordCallback(logId, result) {
+async function recordCallback(logId, result, btnEl) {
+  btnLoading(btnEl, result === '接通' ? '接通中…' : '記錄中…');
+  // 若接通，先跳備註輸入
+  let note = '';
+  if (result === '接通') {
+    note = prompt('通話結果備註（可空白）：') ?? '';
+    // 若取消 prompt 則中止
+    if (note === null) { btnReset(btnEl); return; }
+  }
   try {
-    await apiPost('addCallback', { log_id: logId, result });
+    await apiPost('addCallback', { log_id: logId, result, note });
     loadCallLog().then(renderCallLog);
-  } catch(e) { alert('記錄失敗：' + e.message); }
+  } catch(e) { btnReset(btnEl); alert('記錄失敗：' + e.message); }
 }
 
-async function closeCall(logId) {
+async function closeCall(logId, btnEl) {
   if (!confirm('確定結案？')) return;
+  btnLoading(btnEl, '結案中…');
   try {
     await apiPost('closeCallLog', { log_id: logId });
     loadCallLog().then(renderCallLog);
-  } catch(e) { alert('結案失敗：' + e.message); }
+  } catch(e) { btnReset(btnEl); alert('結案失敗：' + e.message); }
 }
 
 // ============================================================
@@ -1082,12 +1100,11 @@ async function submitUpload(ownerId) {
   const file   = document.getElementById('u-file').files[0];
   const dtype  = document.getElementById('u-type').value;
   if (!file) { alert('請選擇檔案'); return; }
-
+  const btn = document.querySelector('#modal-box .btn-primary');
+  btnLoading(btn, '上傳中…');
   const hasAgent = owner && (owner.has_agent === true || owner.has_agent === 'true');
   const needAgentName = ['代理人證件','授權書'].includes(dtype) && hasAgent;
-
   document.getElementById('upload-status').innerHTML = '<div class="text-sm text-muted">上傳中…</div>';
-
   const reader = new FileReader();
   reader.onload = async (e) => {
     const base64 = e.target.result.split(',')[1];
@@ -1110,7 +1127,9 @@ async function submitUpload(ownerId) {
       await loadDocStatus();
       renderOwnerList();
       renderOwnerDetail(ownerId);
+      btnReset(btn);
     } catch(ex) {
+      btnReset(btn);
       document.getElementById('upload-status').innerHTML =
         `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;">上傳失敗：${ex.message}</div>`;
     }
@@ -1168,6 +1187,7 @@ function navTo(view) {
   if (view === 'calls') loadCallLog().then(renderCallLog);
   if (view === 'announce') loadAnnounceList();
   if (view === 'merge') loadMergeGroups();
+  if (view === 'lottery') loadDashboard();
 }
 
 function renderCallLog() {
@@ -1182,17 +1202,19 @@ function renderCallLog() {
   if (f === 'closed') list = list.filter(c => c.status === 'closed');
   if (f === '來電')   list = list.filter(c => c.call_type === '來電');
   if (f === '去電')   list = list.filter(c => c.call_type === '去電');
-  const typeColor = { '來電':'var(--green-text)', '去電':'var(--brand-text)', '未接':'var(--orange-text)', '漏接':'var(--red-text)' };
+  const typeColor = { '來電':'var(--green-text)', '去電':'var(--brand-text)' };
   const rows = list.map(c => {
     const cbs = Array.isArray(c.callback_log) ? c.callback_log : [];
     const isClosed = c.status === 'closed';
     const isAgent = c.is_agent === 'true' || c.is_agent === true;
     const callerLabel = c.caller_name ? c.caller_name + '（' + (isAgent?'代理/家屬':'本人') + '）' : c.owner_name;
     const cbRows = cbs.map(cb =>
-      `<div class="flex items-center gap-8 text-xs text-muted" style="padding:2px 0;">
-        <i class="ti ti-phone-call" style="font-size:11px;"></i>
-        <span>${cb.time}</span><span>${cb.by?.split('@')[0]||''}</span>
+      `<div class="flex items-start gap-8 text-xs text-muted" style="padding:2px 0;">
+        <i class="ti ti-phone-call" style="font-size:11px;margin-top:2px;"></i>
+        <div><span>${cb.time}</span> <span>${cb.by?.split('@')[0]||''}</span>
         <span style="color:${cb.result==='接通'?'var(--green-text)':'var(--tt)'};">${cb.result}</span>
+        ${cb.note?`<span style="color:var(--ts);"> — ${cb.note}</span>`:''}
+        </div>
       </div>`
     ).join('');
     return `<div class="card mb-8" style="${isClosed?'opacity:0.65;':''}" >
@@ -1214,11 +1236,11 @@ function renderCallLog() {
           <div class="text-xs text-muted mb-6">${c.logged_by?.split('@')[0]||''}</div>
           ${!isClosed?`<div class="flex gap-4" style="flex-direction:column;align-items:flex-end;">
             <button class="btn-secondary" style="font-size:11px;padding:3px 8px;white-space:nowrap;"
-              onclick="recordCallback('${c.log_id}','未接聽')"><i class="ti ti-phone-x"></i> 未接聽</button>
+              onclick="recordCallback('${c.log_id}','未接聽',this)"><i class="ti ti-phone-x"></i> 未接聽</button>
             <button class="btn-success" style="font-size:11px;padding:3px 8px;white-space:nowrap;"
-              onclick="recordCallback('${c.log_id}','接通')"><i class="ti ti-phone-check"></i> 接通結案</button>
+              onclick="recordCallback('${c.log_id}','接通',this)"><i class="ti ti-phone-check"></i> 接通結案</button>
             <button class="btn-secondary" style="font-size:11px;padding:3px 8px;white-space:nowrap;color:var(--tt);"
-              onclick="closeCall('${c.log_id}')">結案</button>
+              onclick="closeCall('${c.log_id}',this)">結案</button>
           </div>`:''}
         </div>
       </div>
@@ -1293,6 +1315,8 @@ function openAnnounceModal() {
 async function submitAnnounce() {
   const title = document.getElementById('ann-title').value.trim();
   if (!title) { alert('標題為必填'); return; }
+  const btn = document.querySelector('#modal-box .btn-primary');
+  btnLoading(btn, '發布中…');
   try {
     await apiPost('addAnnouncement', {
       level:   document.getElementById('ann-level').value,
@@ -1302,7 +1326,7 @@ async function submitAnnounce() {
     });
     closeModal();
     loadAnnounceList();
-  } catch(e) { alert('發布失敗：' + e.message); }
+  } catch(e) { btnReset(btn); alert('發布失敗：' + e.message); }
 }
 
 async function deleteAnnounce(annId) {
@@ -1838,7 +1862,158 @@ function updateSidebar() {
   const total = STATE.owners.length;
   document.getElementById('sb-done').textContent  = `${done} / ${total}`;
   document.getElementById('sb-dup').textContent   = dups;
-  document.getElementById('sb-callback').textContent = '—'; // from call log
+  document.getElementById('sb-callback').textContent = '—';
+}
+
+// ============================================================
+//  選屋總覽儀表板
+// ============================================================
+async function loadDashboard() {
+  const el = document.getElementById('dashboard-content');
+  el.innerHTML = '<div style="text-align:center;color:var(--tt);padding:40px;">計算中…</div>';
+  try {
+    const [unitMap, parkMap] = await Promise.all([apiGet('getUnits'), apiGet('getParking')]);
+    renderDashboard(unitMap, parkMap);
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red-text);padding:20px;">載入失敗：${e.message}</div>`;
+  }
+}
+
+function renderDashboard(unitMap, parkMap) {
+  const el = document.getElementById('dashboard-content');
+  const sels = STATE.selections.filter(s => s.status !== 'deleted');
+  const owners = STATE.owners;
+  const participating = owners.filter(o => !(o.participate === 'false' || o.participate === false));
+
+  // 已選的戶別、車位
+  const selectedUnits = new Set();
+  const selectedParks = new Set();
+  sels.forEach(s => {
+    (Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos||'[]')).forEach(u => selectedUnits.add(u));
+    (Array.isArray(s.parking_nos) ? s.parking_nos : JSON.parse(s.parking_nos||'[]')).forEach(p => selectedParks.add(p));
+  });
+
+  const totalUnits   = Object.keys(unitMap).filter(k => !k.includes('-S')).length; // 排除店面
+  const totalParks   = Object.keys(parkMap).length;
+  const remUnits     = totalUnits - selectedUnits.size;
+  const remParks     = totalParks - selectedParks.size;
+  const selOwners    = participating.filter(o => {
+    const s = getSelForOwner(o.owner_id);
+    return s && s.status !== 'deleted';
+  }).length;
+
+  // 選屋率
+  const selRate = participating.length > 0 ? Math.round(selOwners / participating.length * 100) : 0;
+
+  // 車戶比（剩餘車位/剩餘戶別）
+  const carRatio = remUnits > 0 ? (remParks / remUnits).toFixed(2) : '—';
+
+  // 剩餘坪數
+  let remSqp = 0;
+  Object.entries(unitMap).forEach(([k, u]) => {
+    if (!k.includes('-S') && !selectedUnits.has(k)) remSqp += Number(u.area_sqp||0);
+  });
+
+  // 剩餘戶型分布（依 unit_type 分組）
+  const typeCount = {};
+  Object.entries(unitMap).forEach(([k, u]) => {
+    if (k.includes('-S')) return;
+    if (selectedUnits.has(k)) return;
+    const t = u.unit_type || '其他';
+    typeCount[t] = (typeCount[t]||0) + 1;
+  });
+  const typeTotal = Object.values(typeCount).reduce((s,n) => s+n, 0);
+  const typeEntries = Object.entries(typeCount).sort((a,b) => b[1]-a[1]);
+
+  // 圓餅圖顏色
+  const pieColors = ['#748B97','#9FA0A0','#A8C4D0','#D8D3C9','#B5C9D1','#7FA8B8','#C5D5DC','#E2E8EC'];
+
+  // SVG 圓餅圖
+  let pieSvg = '';
+  if (typeTotal > 0) {
+    let startAngle = -Math.PI / 2;
+    const cx = 80, cy = 80, r = 70;
+    const slices = typeEntries.map(([type, count], i) => {
+      const angle = (count / typeTotal) * 2 * Math.PI;
+      const x1 = cx + r * Math.cos(startAngle);
+      const y1 = cy + r * Math.sin(startAngle);
+      startAngle += angle;
+      const x2 = cx + r * Math.cos(startAngle);
+      const y2 = cy + r * Math.sin(startAngle);
+      const large = angle > Math.PI ? 1 : 0;
+      const color = pieColors[i % pieColors.length];
+      const path = `M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`;
+      return `<path d="${path}" fill="${color}" stroke="var(--cp)" stroke-width="1.5"/>`;
+    }).join('');
+    pieSvg = `<svg width="160" height="160" viewBox="0 0 160 160">${slices}</svg>`;
+  }
+
+  // 圖例
+  const legend = typeEntries.map(([type, count], i) => {
+    const pct = typeTotal > 0 ? Math.round(count/typeTotal*100) : 0;
+    return `<div class="flex items-center gap-6" style="margin-bottom:6px;">
+      <div style="width:10px;height:10px;border-radius:2px;flex-shrink:0;background:${pieColors[i%pieColors.length]};"></div>
+      <span style="font-size:12px;">${type}</span>
+      <span class="text-muted text-xs">${count}戶 ${pct}%</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <!-- 主要數字 -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
+      <div class="stat-card">
+        <div class="stat-n" style="color:var(--accent);">${selRate}%</div>
+        <div class="stat-l">選屋率</div>
+        <div class="text-xs text-muted">${selOwners}/${participating.length} 人</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-n" style="color:var(--brand-text);">${remUnits}</div>
+        <div class="stat-l">剩餘戶別</div>
+        <div class="text-xs text-muted">共 ${totalUnits} 戶</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-n" style="color:var(--brand-text);">${remParks}</div>
+        <div class="stat-l">剩餘車位</div>
+        <div class="text-xs text-muted">共 ${totalParks} 位</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-n" style="color:var(--brand-text);">${carRatio}</div>
+        <div class="stat-l">車戶比</div>
+        <div class="text-xs text-muted">剩餘車位/戶別</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-n" style="color:var(--brand-text);">${remSqp.toFixed(1)}</div>
+        <div class="stat-l">剩餘坪數</div>
+        <div class="text-xs text-muted">未選戶別合計</div>
+      </div>
+    </div>
+
+    <!-- 選屋進度條 -->
+    <div class="card mb-16">
+      <div class="flex justify-between mb-8">
+        <span style="font-size:13px;font-weight:500;">選屋進度</span>
+        <span style="font-size:12px;color:var(--ts);">${selOwners} / ${participating.length} 人已選屋</span>
+      </div>
+      <div class="pbar-bg" style="height:10px;border-radius:5px;">
+        <div class="pbar-fill" style="width:${selRate}%;background:var(--green);height:10px;border-radius:5px;"></div>
+      </div>
+      <div class="flex justify-between mt-6 text-xs text-muted">
+        <span>0%</span><span>${selRate}%</span><span>100%</span>
+      </div>
+    </div>
+
+    <!-- 剩餘戶型分布 -->
+    <div class="card">
+      <div style="font-size:13px;font-weight:500;margin-bottom:12px;">剩餘戶型分布
+        <span class="text-xs text-muted font-normal">（依戶型代號，等房型資料確認後可合併為幾房）</span>
+      </div>
+      ${typeTotal > 0 ? `
+      <div class="flex gap-24 items-center">
+        <div>${pieSvg}</div>
+        <div style="flex:1;">${legend}</div>
+      </div>` : '<div class="text-muted text-xs">無剩餘戶別</div>'}
+    </div>
+  `;
 }
 
 // ============================================================
@@ -1850,6 +2025,24 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 // ============================================================
 //  UTILS
 // ============================================================
+// ============================================================
+//  LOADING BUTTON 防重複送出工具
+// ============================================================
+function btnLoading(btnEl, loadingText = '處理中…') {
+  if (!btnEl) return;
+  btnEl.disabled = true;
+  btnEl._origText = btnEl.innerHTML;
+  btnEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
+    <svg width="14" height="14" viewBox="0 0 14 14" style="animation:spin 0.8s linear infinite;">
+      <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="20" stroke-dashoffset="10"/>
+    </svg>${loadingText}</span>`;
+}
+function btnReset(btnEl) {
+  if (!btnEl) return;
+  btnEl.disabled = false;
+  if (btnEl._origText) btnEl.innerHTML = btnEl._origText;
+}
+
 function fmt(n) { return Math.round(n||0).toLocaleString('zh-TW'); }
 
 // ============================================================
