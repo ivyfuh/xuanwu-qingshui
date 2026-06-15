@@ -1680,7 +1680,8 @@ async function submitMerge() {
   }, 0);
   if (members.length < 2) { alert('合併組至少需要 2 人'); return; }
   if (!units.length && !parks.length) { alert('請輸入選配戶別或車位'); return; }
-  if (total > combinedLimit2) { alert(`選配總價超過合併上限 NT$${fmt(combinedLimit2)}，不能送出`); return; }
+  const mergeTotal = MERGE_STATE.mergeTotal || 0;
+  if (mergeTotal > combinedLimit2) { alert(`選配總價超過合併上限 NT$${fmt(combinedLimit2)}，不能送出`); return; }
 
   MERGE_STATE.submitting = true;
   const btn = document.getElementById('merge-submit-btn');
