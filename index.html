@@ -1390,7 +1390,8 @@ function openMergeModal(groupId) {
     <div class="mb-12">
       <div class="field-label">搜尋並選擇組員（打姓名或編號篩選）</div>
       <input type="text" id="merge-member-search" placeholder="輸入姓名或編號…" oninput="filterMergeMembers(this.value)" style="margin-bottom:6px;">
-      <div id="merge-candidates" style="max-height:160px;overflow-y:auto;border:0.5px solid var(--bt);border-radius:var(--rm);padding:6px;"></div>
+      <div id="merge-candidates" style="max-height:140px;overflow-y:auto;border:0.5px solid var(--bt);border-radius:var(--rm);padding:6px;"></div>
+      <div id="merge-selected-chips" style="margin-top:8px;"></div>
     </div>
 
     <div class="mb-12">
@@ -1474,14 +1475,21 @@ function toggleMergeMember(ownerId) {
 // 改某人金額
 function setMergeAmount(ownerId, val) {
   MERGE_STATE.invest[ownerId] = Math.max(0, Math.round(Number(val)||0));
-  recalcMerge(true);  // skipAmountRender: 不重繪金額輸入框（避免游標跳走）
+  recalcMerge(true);  // 不重繪金額框，避免游標跳走
 }
 
-// 改某人比例（%）→ 換算金額（以選配總價為基準）
+// 改某人比例（%，佔出資加總的比例）→ 換算金額
+// 注意：改一人比例時，以「其他人金額固定」回推此人金額，使此人佔比達到指定%
 function setMergeRatio(ownerId, pct) {
-  const total = MERGE_STATE.mergeTotal || 0;
-  MERGE_STATE.invest[ownerId] = Math.round(total * (Number(pct)||0) / 100);
-  recalcMerge(false);
+  pct = Number(pct)||0;
+  const members = MERGE_STATE.selectedMembers;
+  const othersTotal = members.filter(o => o !== ownerId)
+    .reduce((s,o) => s + (MERGE_STATE.invest[o]||0), 0);
+  // 此人佔比 = x / (x + othersTotal) = pct/100  → x = othersTotal * pct / (100 - pct)
+  if (pct >= 100) { MERGE_STATE.invest[ownerId] = othersTotal > 0 ? othersTotal * 99 : 0; }
+  else if (pct <= 0) { MERGE_STATE.invest[ownerId] = 0; }
+  else { MERGE_STATE.invest[ownerId] = Math.round(othersTotal * pct / (100 - pct)); }
+  recalcMerge(true);
 }
 
 // 重新計算選配總價 + 出資 + 檢核
@@ -1500,33 +1508,49 @@ function recalcMerge(skipAmountRender) {
   const members = MERGE_STATE.selectedMembers;
   const investTotal = members.reduce((s,oid) => s + (MERGE_STATE.invest[oid]||0), 0);
 
-  // 各人出資輸入列
+  // 已選組員 chips 顯示在上方
+  const chipsEl = document.getElementById('merge-selected-chips');
+  if (chipsEl) {
+    chipsEl.innerHTML = members.length
+      ? members.map(oid => {
+          const u = MERGE_STATE.usage[oid]||{};
+          return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--brand-bg);color:var(--brand-text);padding:3px 8px;border-radius:12px;font-size:12px;margin:2px 4px 2px 0;">
+            ${u.name||oid}
+            <i class="ti ti-x" style="cursor:pointer;font-size:12px;" onclick="toggleMergeMember('${oid}')"></i>
+          </span>`;
+        }).join('')
+      : '<span class="text-xs text-muted">尚未選擇組員</span>';
+  }
+
+  // 各人出資輸入列（比例 = 投入 ÷ 出資加總）
   if (!skipAmountRender) {
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
       rowsEl.innerHTML = members.map(oid => {
         const u = MERGE_STATE.usage[oid] || {};
         const amt = MERGE_STATE.invest[oid] || 0;
-        const pct = total > 0 ? (amt/total*100) : 0;
+        const pct = investTotal > 0 ? (amt/investTotal*100) : 0;
         const overRemain = amt > (u.remaining||0) + 1;
-        return `<div style="display:grid;grid-template-columns:1fr 110px 78px;gap:6px;align-items:center;margin-bottom:5px;">
-          <span style="font-size:12px;">${u.serial_no||''} ${u.name||oid}
+        return `<div style="display:grid;grid-template-columns:1fr 110px 70px;gap:6px;align-items:center;margin-bottom:5px;">
+          <span style="font-size:12px;">${u.name||oid}
             <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(u.remaining||0)}）</span></span>
           <input type="number" value="${amt}" oninput="setMergeAmount('${oid}', this.value)"
             style="font-size:12px;padding:4px 8px;${overRemain?'border-color:var(--red);':''}" placeholder="金額">
-          <input type="number" value="${pct.toFixed(1)}" oninput="setMergeRatio('${oid}', this.value)"
-            style="font-size:12px;padding:4px 8px;" placeholder="%" step="0.1">
+          <div style="display:flex;align-items:center;gap:2px;">
+            <input type="number" value="${pct.toFixed(1)}" oninput="setMergeRatio('${oid}', this.value)"
+              style="font-size:12px;padding:4px 4px;width:50px;" step="0.1"><span class="text-xs text-muted">%</span>
+          </div>
         </div>`;
       }).join('');
     }
   } else {
-    // 只更新比例欄（金額框不動）
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
       members.forEach((oid, i) => {
         const amt = MERGE_STATE.invest[oid]||0;
-        const pct = total>0 ? (amt/total*100) : 0;
+        const pct = investTotal>0 ? (amt/investTotal*100) : 0;
         const inputs = rowsEl.children[i]?.querySelectorAll('input');
+        if (inputs && inputs[0]) inputs[0].value = amt;       // 金額（比例改動時要更新金額框）
         if (inputs && inputs[1]) inputs[1].value = pct.toFixed(1);
       });
     }
@@ -1591,6 +1615,7 @@ function recalcMerge(skipAmountRender) {
 }
 
 async function submitMerge() {
+  if (MERGE_STATE.submitting) return;  // 防重複送單
   const units = expandCodeList(document.getElementById('merge-units').value);
   const parks = expandCodeList(document.getElementById('merge-parks').value);
   const members = MERGE_STATE.selectedMembers.map(oid => ({
@@ -1606,14 +1631,23 @@ async function submitMerge() {
   if (total > Math.round(investTotal*1.1)) { alert('選配總價超過合併上限，無法送出'); return; }
   if (members.some(m => m.invested > (MERGE_STATE.usage[m.owner_id]?.remaining||0)+1)) { alert('有人投入超過剩餘額度，無法送出'); return; }
 
+  MERGE_STATE.submitting = true;
+  const btn = document.getElementById('merge-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '儲存中…'; }
+
   try {
     await apiPost('saveMergeGroup', {
       group_id: MERGE_STATE.editing || undefined,
       members, unit_nos: units, parking_nos: parks,
     });
+    MERGE_STATE.submitting = false;
     closeModal();
     loadMergeGroups();
-  } catch(e) { alert('儲存失敗：' + e.message); }
+  } catch(e) {
+    MERGE_STATE.submitting = false;
+    if (btn) { btn.disabled = false; btn.textContent = '儲存合併組'; }
+    alert('儲存失敗：' + e.message);
+  }
 }
 
 async function deleteMerge(groupId) {
