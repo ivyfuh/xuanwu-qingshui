@@ -205,15 +205,24 @@ tr.selected td{background:#EDF5FB;}
 
       <!-- ===== CALL LOG VIEW ===== -->
       <div id="view-calls" style="display:none;">
-        <div class="flex items-center justify-between mb-16">
+        <div class="flex items-center justify-between mb-12">
           <h2 style="font-size:16px;font-weight:500;">電話聯絡記錄</h2>
           <button class="btn-primary" onclick="openCallModal(null)">
             <i class="ti ti-phone-plus"></i> 記錄通話
           </button>
         </div>
-        <div class="card" style="padding:0;overflow:hidden;">
-          <div id="call-rows" style="min-height:200px;"></div>
+        <div class="flex gap-8 mb-12">
+          <input type="text" id="call-search" placeholder="搜尋地主姓名或來電人…" style="flex:1;"
+            oninput="renderCallLog()">
+          <select id="call-filter" onchange="renderCallLog()" style="width:100px;">
+            <option value="">全部</option>
+            <option value="open">待處理</option>
+            <option value="closed">已結案</option>
+            <option value="來電">來電</option>
+            <option value="去電">去電</option>
+          </select>
         </div>
+        <div id="call-rows" style="min-height:200px;"></div>
       </div>
 
       <!-- ===== ANNOUNCEMENT VIEW ===== -->
@@ -908,54 +917,126 @@ async function submitOwner(ownerId) {
 // ============================================================
 function openCallModal(ownerId) {
   const owner = ownerId ? STATE.owners.find(o => o.owner_id == ownerId) : null;
-  document.getElementById('modal-title').textContent = '記錄通話' + (owner ? ' — ' + owner.name : '');
+  document.getElementById('modal-title').textContent = '記錄通話';
   const now = new Date().toISOString().slice(0,16);
   document.getElementById('modal-body').innerHTML = `
-    ${!owner ? `<div class="mb-12"><div class="field-label">地主</div>
-      <select id="c-owner">
-        <option value="">選擇地主…</option>
-        ${STATE.owners.map(o => `<option value="${o.owner_id}">${o.name}</option>`).join('')}
-      </select></div>` : `<input type="hidden" id="c-owner" value="${ownerId}">`}
+    <div class="mb-12">
+      <div class="field-label">地主（打名字搜尋）</div>
+      <input type="text" id="c-owner-search" placeholder="輸入姓名篩選…"
+        value="${owner ? owner.name : ''}"
+        oninput="filterCallOwner(this.value)" autocomplete="off">
+      <div id="c-owner-list" style="max-height:130px;overflow-y:auto;border:0.5px solid var(--bt);
+        border-radius:var(--rm);margin-top:4px;display:${owner?'none':'block'};"></div>
+      <input type="hidden" id="c-owner-id" value="${ownerId||''}" >
+      <div id="c-owner-selected" style="margin-top:4px;font-size:12px;color:var(--brand-text);">
+        ${owner ? '<i class="ti ti-check"></i> ' + owner.name : ''}
+      </div>
+    </div>
     <div class="grid-2 mb-12">
       <div><div class="field-label">通話類型</div>
-        <select id="c-type">
+        <select id="c-type" onchange="toggleCallerName()">
           <option>去電</option><option>來電</option><option>未接</option><option>漏接</option>
         </select>
       </div>
-      <div><div class="field-label">通話時間</div><input type="datetime-local" id="c-time" value="${now}"></div>
+      <div><div class="field-label">通話時間</div>
+        <input type="datetime-local" id="c-time" value="${now}">
+      </div>
+    </div>
+    <div id="c-caller-block" style="display:none;">
+      <div class="grid-2 mb-12">
+        <div><div class="field-label">來電人姓名（若非所有權人）</div>
+          <input type="text" id="c-caller" placeholder="留空表示本人來電">
+        </div>
+        <div><div class="field-label">與所有權人關係</div>
+          <select id="c-is-agent">
+            <option value="false">本人</option>
+            <option value="true">代理人/家屬</option>
+          </select>
+        </div>
+      </div>
     </div>
     <div class="mb-12">
-      <div class="field-label">通話內容備註</div>
-      <textarea id="c-notes" rows="3" placeholder="通話摘要、地主反應、後續處理…"></textarea>
+      <div class="field-label">回電電話</div>
+      <input type="text" id="c-phone" placeholder="對方留下的回電號碼（若有）">
+    </div>
+    <div class="mb-12">
+      <div class="field-label">問題描述</div>
+      <textarea id="c-issue" rows="2" placeholder="地主詢問什麼、反映什麼問題…"></textarea>
     </div>
     <div class="mb-16">
-      <div class="field-label">後續狀態</div>
-      <select id="c-status">
-        <option>已處理</option><option>待回電</option><option>結案</option>
-      </select>
+      <div class="field-label">預計回覆時間</div>
+      <input type="text" id="c-reply" placeholder="例：本週五前、下週一上午">
     </div>
     <div class="flex gap-8 justify-between">
       <button class="btn-secondary" onclick="closeModal()">取消</button>
-      <button class="btn-primary" onclick="submitCallLog()">儲存紀錄</button>
+      <button class="btn-primary" onclick="submitCallLog()">儲存記錄</button>
     </div>
   `;
   openModal();
+  if (!owner) filterCallOwner('');
+}
+
+function toggleCallerName() {
+  const t = document.getElementById('c-type')?.value;
+  const el = document.getElementById('c-caller-block');
+  if (el) el.style.display = (t === '來電') ? '' : 'none';
+}
+
+function filterCallOwner(q) {
+  const list = document.getElementById('c-owner-list');
+  if (!list) return;
+  const filtered = STATE.owners.filter(o =>
+    !q || (o.name||'').toLowerCase().includes(q.toLowerCase())
+  ).slice(0, 15);
+  list.style.display = '';
+  list.innerHTML = filtered.map(o =>
+    `<div style="padding:7px 10px;cursor:pointer;font-size:13px;border-bottom:0.5px solid var(--bt);"
+      onmousedown="selectCallOwner('${o.owner_id}','${o.name}')">${o.name}
+      <span class="text-xs text-muted">（${o.serial_no||''})）</span></div>`
+  ).join('') || '<div style="padding:8px 10px;font-size:12px;color:var(--tt);">找不到地主</div>';
+}
+
+function selectCallOwner(ownerId, name) {
+  document.getElementById('c-owner-id').value = ownerId;
+  document.getElementById('c-owner-search').value = name;
+  document.getElementById('c-owner-list').style.display = 'none';
+  document.getElementById('c-owner-selected').innerHTML = '<i class="ti ti-check"></i> ' + name;
 }
 
 async function submitCallLog() {
-  const ownerId = document.getElementById('c-owner').value;
+  const ownerId = document.getElementById('c-owner-id').value;
   const owner   = STATE.owners.find(o => o.owner_id == ownerId);
+  if (!ownerId) { alert('請選擇地主'); return; }
   try {
     await apiPost('addCallLog', {
-      owner_id:        ownerId,
-      owner_name:      owner?.name || '',
-      call_type:       document.getElementById('c-type').value,
-      call_time:       document.getElementById('c-time').value,
-      notes:           document.getElementById('c-notes').value,
-      callback_status: document.getElementById('c-status').value,
+      owner_id:       ownerId,
+      owner_name:     owner?.name || '',
+      caller_name:    document.getElementById('c-caller')?.value || '',
+      is_agent:       document.getElementById('c-is-agent')?.value || 'false',
+      call_type:      document.getElementById('c-type').value,
+      call_time:      document.getElementById('c-time').value,
+      phone:          document.getElementById('c-phone').value,
+      issue:          document.getElementById('c-issue').value,
+      expected_reply: document.getElementById('c-reply').value,
     });
     closeModal();
+    loadCallLog().then(renderCallLog);
   } catch(e) { alert('儲存失敗：' + e.message); }
+}
+
+async function recordCallback(logId, result) {
+  try {
+    await apiPost('addCallback', { log_id: logId, result });
+    loadCallLog().then(renderCallLog);
+  } catch(e) { alert('記錄失敗：' + e.message); }
+}
+
+async function closeCall(logId) {
+  if (!confirm('確定結案？')) return;
+  try {
+    await apiPost('closeCallLog', { log_id: logId });
+    loadCallLog().then(renderCallLog);
+  } catch(e) { alert('結案失敗：' + e.message); }
 }
 
 // ============================================================
@@ -1090,23 +1171,60 @@ function navTo(view) {
 }
 
 function renderCallLog() {
-  const rows = STATE.callLog.map(c => `
-    <div style="display:grid;grid-template-columns:80px 80px 1fr 80px 100px;align-items:center;
-      padding:9px 14px;border-bottom:0.5px solid var(--bt);gap:8px;">
-      <div class="text-xs text-muted">${String(c.call_time||'').slice(0,10)}</div>
-      <div style="font-size:12px;">${c.owner_name||''}</div>
-      <div style="font-size:12px;color:var(--ts);">${c.notes||''}</div>
-      <div><span class="badge ${c.call_type==='來電'?'badge-ok':'badge-draft'}">${c.call_type||''}</span></div>
-      <div><span class="badge ${c.callback_status==='待回電'?'badge-over':'badge-ok'}">${c.callback_status||''}</span></div>
-    </div>`).join('') || '<div style="padding:40px;text-align:center;color:var(--tt);">無通話記錄</div>';
-
-  // Header
-  document.getElementById('call-rows').innerHTML = `
-    <div style="display:grid;grid-template-columns:80px 80px 1fr 80px 100px;
-      padding:6px 14px;background:var(--cs);gap:8px;border-bottom:0.5px solid var(--bt);">
-      ${['時間','地主','備註','類型','狀態'].map(h => `<span class="text-xs text-muted font-medium">${h}</span>`).join('')}
-    </div>
-    ${rows}`;
+  const q = (document.getElementById('call-search')?.value || '').toLowerCase();
+  const f = document.getElementById('call-filter')?.value || '';
+  let list = [...(STATE.callLog||[])];
+  if (q) list = list.filter(c =>
+    (c.owner_name||'').toLowerCase().includes(q) ||
+    (c.caller_name||'').toLowerCase().includes(q)
+  );
+  if (f === 'open')   list = list.filter(c => c.status !== 'closed');
+  if (f === 'closed') list = list.filter(c => c.status === 'closed');
+  if (f === '來電')   list = list.filter(c => c.call_type === '來電');
+  if (f === '去電')   list = list.filter(c => c.call_type === '去電');
+  const typeColor = { '來電':'var(--green-text)', '去電':'var(--brand-text)', '未接':'var(--orange-text)', '漏接':'var(--red-text)' };
+  const rows = list.map(c => {
+    const cbs = Array.isArray(c.callback_log) ? c.callback_log : [];
+    const isClosed = c.status === 'closed';
+    const isAgent = c.is_agent === 'true' || c.is_agent === true;
+    const callerLabel = c.caller_name ? c.caller_name + '（' + (isAgent?'代理/家屬':'本人') + '）' : c.owner_name;
+    const cbRows = cbs.map(cb =>
+      `<div class="flex items-center gap-8 text-xs text-muted" style="padding:2px 0;">
+        <i class="ti ti-phone-call" style="font-size:11px;"></i>
+        <span>${cb.time}</span><span>${cb.by?.split('@')[0]||''}</span>
+        <span style="color:${cb.result==='接通'?'var(--green-text)':'var(--tt)'};">${cb.result}</span>
+      </div>`
+    ).join('');
+    return `<div class="card mb-8" style="${isClosed?'opacity:0.65;':''}" >
+      <div class="flex items-start justify-between gap-12">
+        <div style="flex:1;min-width:0;">
+          <div class="flex items-center gap-8 mb-4">
+            <span style="font-size:12px;font-weight:600;color:${typeColor[c.call_type]||'var(--tp)'};">${c.call_type||''}</span>
+            <span style="font-size:13px;font-weight:500;">${c.owner_name||''}</span>
+            ${c.caller_name?`<span class="text-xs text-muted">← ${callerLabel}</span>`:''}
+            ${isClosed?'<span class="badge badge-ok" style="font-size:10px;">已結案</span>':''}
+          </div>
+          ${c.phone?`<div class="text-xs mb-4"><i class="ti ti-phone"></i> 回電：<b>${c.phone}</b></div>`:''}
+          ${c.issue?`<div class="text-sm" style="color:var(--ts);margin-bottom:4px;">${c.issue}</div>`:''}
+          ${c.expected_reply?`<div class="text-xs text-muted"><i class="ti ti-clock"></i> 預計回覆：${c.expected_reply}</div>`:''}
+          ${cbs.length?`<div style="margin-top:6px;padding-top:6px;border-top:0.5px solid var(--bt);">${cbRows}</div>`:''}
+        </div>
+        <div style="flex-shrink:0;text-align:right;">
+          <div class="text-xs text-muted mb-6">${String(c.call_time||'').slice(0,16).replace('T',' ')}</div>
+          <div class="text-xs text-muted mb-6">${c.logged_by?.split('@')[0]||''}</div>
+          ${!isClosed?`<div class="flex gap-4" style="flex-direction:column;align-items:flex-end;">
+            <button class="btn-secondary" style="font-size:11px;padding:3px 8px;white-space:nowrap;"
+              onclick="recordCallback('${c.log_id}','未接聽')"><i class="ti ti-phone-x"></i> 未接聽</button>
+            <button class="btn-success" style="font-size:11px;padding:3px 8px;white-space:nowrap;"
+              onclick="recordCallback('${c.log_id}','接通')"><i class="ti ti-phone-check"></i> 接通結案</button>
+            <button class="btn-secondary" style="font-size:11px;padding:3px 8px;white-space:nowrap;color:var(--tt);"
+              onclick="closeCall('${c.log_id}')">結案</button>
+          </div>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<div style="padding:40px;text-align:center;color:var(--tt);">無通話記錄</div>';
+  document.getElementById('call-rows').innerHTML = rows;
 }
 
 // ============================================================
