@@ -1383,6 +1383,9 @@ function openMergeModal(groupId) {
   }
   MERGE_STATE.selectedMembers = group ? group.members.map(m => m.owner_id) : [];
   MERGE_STATE.mergeTotal = 0;  // 選配總價（試算後更新）
+  // 編輯既有組：保留原投入（手動模式）；新增組：自動分攤模式
+  MERGE_STATE.manualInvest = group ? true : false;
+  MERGE_STATE.submitting = false;
 
   document.getElementById('modal-title').textContent = group ? '編輯合併組' : '新增合併組';
 
@@ -1407,7 +1410,10 @@ function openMergeModal(groupId) {
       <div id="merge-parks-preview" style="margin-top:4px;font-size:12px;"></div>
     </div>
 
-    <div class="field-label">各人出資（可改金額或比例，預設帶入剩餘全額）</div>
+    <div class="flex items-center justify-between" style="margin-bottom:4px;">
+      <div class="field-label" style="margin:0;">各人出資（預設按剩餘權值比例分攤，可手動改）</div>
+      <button class="btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="resetMergeAuto()">↻ 自動分攤</button>
+    </div>
     <div id="merge-invest-rows" style="margin-bottom:8px;"></div>
 
     <div id="merge-check" style="margin-bottom:10px;"></div>
@@ -1458,6 +1464,11 @@ function renderMergeCandidates() {
   }).join('') || '<div class="text-xs text-muted" style="padding:10px;">無符合的地主</div>';
 }
 
+function resetMergeAuto() {
+  MERGE_STATE.manualInvest = false;
+  recalcMerge();
+}
+
 function toggleMergeMember(ownerId) {
   const i = MERGE_STATE.selectedMembers.indexOf(ownerId);
   if (i >= 0) {
@@ -1465,8 +1476,10 @@ function toggleMergeMember(ownerId) {
     delete MERGE_STATE.invest[ownerId];
   } else {
     MERGE_STATE.selectedMembers.push(ownerId);
-    // 預設投入 = 剩餘全額
-    MERGE_STATE.invest[ownerId] = MERGE_STATE.usage[ownerId]?.remaining || 0;
+    // 手動模式才寫死剩餘全額；自動模式交給 autoDistributeInvest 按比例分攤
+    if (MERGE_STATE.manualInvest) {
+      MERGE_STATE.invest[ownerId] = MERGE_STATE.usage[ownerId]?.remaining || 0;
+    }
   }
   renderMergeCandidates();
   recalcMerge();
@@ -1475,21 +1488,42 @@ function toggleMergeMember(ownerId) {
 // 改某人金額
 function setMergeAmount(ownerId, val) {
   MERGE_STATE.invest[ownerId] = Math.max(0, Math.round(Number(val)||0));
-  recalcMerge(true);  // 不重繪金額框，避免游標跳走
+  MERGE_STATE.manualInvest = true;  // 承辦手動改過，停止自動分攤
+  recalcMerge(true);
 }
 
 // 改某人比例（%，佔出資加總的比例）→ 換算金額
-// 注意：改一人比例時，以「其他人金額固定」回推此人金額，使此人佔比達到指定%
 function setMergeRatio(ownerId, pct) {
   pct = Number(pct)||0;
+  MERGE_STATE.manualInvest = true;
   const members = MERGE_STATE.selectedMembers;
   const othersTotal = members.filter(o => o !== ownerId)
     .reduce((s,o) => s + (MERGE_STATE.invest[o]||0), 0);
-  // 此人佔比 = x / (x + othersTotal) = pct/100  → x = othersTotal * pct / (100 - pct)
   if (pct >= 100) { MERGE_STATE.invest[ownerId] = othersTotal > 0 ? othersTotal * 99 : 0; }
   else if (pct <= 0) { MERGE_STATE.invest[ownerId] = 0; }
   else { MERGE_STATE.invest[ownerId] = Math.round(othersTotal * pct / (100 - pct)); }
   recalcMerge(true);
+}
+
+// 按各人剩餘權值比例，自動分攤選配總價
+function autoDistributeInvest(total) {
+  const members = MERGE_STATE.selectedMembers;
+  const remainSum = members.reduce((s,oid) => s + (MERGE_STATE.usage[oid]?.remaining||0), 0);
+  if (remainSum <= 0 || total <= 0) {
+    members.forEach(oid => MERGE_STATE.invest[oid] = 0);
+    return;
+  }
+  let allocated = 0;
+  members.forEach((oid, i) => {
+    const remain = MERGE_STATE.usage[oid]?.remaining || 0;
+    if (i === members.length - 1) {
+      MERGE_STATE.invest[oid] = total - allocated;  // 最後一人吃進位差，確保加總=total
+    } else {
+      const amt = Math.round(total * remain / remainSum);
+      MERGE_STATE.invest[oid] = amt;
+      allocated += amt;
+    }
+  });
 }
 
 // 重新計算選配總價 + 出資 + 檢核
@@ -1506,6 +1540,13 @@ function recalcMerge(skipAmountRender) {
   MERGE_STATE.mergeTotal = total;
 
   const members = MERGE_STATE.selectedMembers;
+
+  // 自動分攤模式：按剩餘比例分攤選配總價（除非承辦已手動調整）
+  if (!MERGE_STATE.manualInvest && total > 0 && members.length >= 2) {
+    autoDistributeInvest(total);
+    skipAmountRender = false;  // 需要重繪金額框顯示新分攤
+  }
+
   const investTotal = members.reduce((s,oid) => s + (MERGE_STATE.invest[oid]||0), 0);
 
   // 已選組員 chips 顯示在上方
@@ -1546,12 +1587,14 @@ function recalcMerge(skipAmountRender) {
   } else {
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
+      const active = document.activeElement;
       members.forEach((oid, i) => {
         const amt = MERGE_STATE.invest[oid]||0;
         const pct = investTotal>0 ? (amt/investTotal*100) : 0;
         const inputs = rowsEl.children[i]?.querySelectorAll('input');
-        if (inputs && inputs[0]) inputs[0].value = amt;       // 金額（比例改動時要更新金額框）
-        if (inputs && inputs[1]) inputs[1].value = pct.toFixed(1);
+        // 不更新使用者正在編輯的框，避免游標跳走
+        if (inputs && inputs[0] && inputs[0] !== active) inputs[0].value = amt;
+        if (inputs && inputs[1] && inputs[1] !== active) inputs[1].value = pct.toFixed(1);
       });
     }
   }
