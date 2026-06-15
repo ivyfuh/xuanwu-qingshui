@@ -6,6 +6,7 @@
 <title>清水段選屋系統 — 後台作業</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   --cp:#fff;--cs:#f6f5f0;--ct:#eeede8;
@@ -523,7 +524,7 @@ function renderOwnerList() {
   let list = sorted.filter(o => {
     if (q && !o.name?.toLowerCase().includes(q) && !String(o.serial_no||'').includes(q)) return false;
     const sel = getSelForOwner(o.owner_id);
-    const nonpart = (o.participate==='false'||o.participate===false);
+    const nonpart = (o.participate==='false'||o.participate===false||o.participate==='post');
     const prog = ownerDocProgress(o.owner_id);
     if (f === 'selected'    && (!sel || sel.status==='draft' || nonpart)) return false;
     if (f === 'unselected'  && (sel && !nonpart ? sel.status!=='draft' : false) ) { /* keep drafts/none */ }
@@ -538,7 +539,7 @@ function renderOwnerList() {
 
   // 全案統計（不受篩選影響）
   const all  = STATE.owners;
-  const participating = all.filter(o => !(o.participate==='false'||o.participate===false));
+  const participating = all.filter(o => !(o.participate==='false'||o.participate===false||o.participate==='post'));
   const selectedCount = participating.filter(o => {
     const s = getSelForOwner(o.owner_id); return s && s.status==='confirmed';
   }).length;
@@ -546,7 +547,7 @@ function renderOwnerList() {
     const s = getSelForOwner(o.owner_id); return !s || s.status==='draft';
   }).length;
   const incompleteCount = all.filter(o => { const p = ownerDocProgress(o.owner_id); return p.done < p.total; }).length;
-  const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false)).length;
+  const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false||o.participate==='post')).length;
 
   document.getElementById('st-total').textContent      = all.length;
   document.getElementById('st-selected').textContent   = selectedCount;
@@ -559,7 +560,7 @@ function renderOwnerList() {
 
   const rows = list.map(o => {
     const sel = getSelForOwner(o.owner_id);
-    const nonpart = (o.participate==='false'||o.participate===false);
+    const nonpart = (o.participate==='false'||o.participate===false||o.participate==='post');
     const st  = ownerStatus(o, sel);
     const isActive = STATE.selected_owner_id == o.owner_id;
     const prog = ownerDocProgress(o.owner_id);
@@ -588,7 +589,7 @@ function renderOwnerList() {
 
     // 不參與權變的狀態標籤特殊處理
     const statusBadge = nonpart
-      ? `<span class="badge" style="background:var(--cs);color:var(--tt);">不參與</span>`
+      ? `<span class="badge" style="background:var(--cs);color:var(--tt);">${o.participate==='post'?'不參與(後)':'不參與(前)'}</span>`
       : `<span class="badge ${stMap[st]||''}">${stLabel[st]||st}</span>`;
 
     return `<div style="display:grid;grid-template-columns:56px 1fr 80px 88px 28px;
@@ -697,7 +698,7 @@ function renderOwnerDetail(ownerId) {
     <div class="text-xs text-muted mb-4">選配內容</div>
     ${unitRows}${parkRows}
 
-    ${(owner.participate==='false'||owner.participate===false) ? `
+    ${(owner.participate==='false'||owner.participate===false||owner.participate==='post') ? `
     <div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;margin-top:12px;font-size:12px;color:var(--ts);text-align:center;">
       <i class="ti ti-info-circle"></i> 此地主不參與選配（不願/不能領取更新前價值），無需選位置
     </div>
@@ -972,10 +973,11 @@ function openOwnerModal(ownerId) {
     </div>
     <div class="grid-2 mb-12">
       <div>
-        <div class="field-label">是否參與選配</div>
-        <select id="o-participate">
-          <option value="true" ${owner?.participate!=='false'&&owner?.participate!==false?'selected':''}>參與選配</option>
-          <option value="false" ${owner?.participate==='false'||owner?.participate===false?'selected':''}>不參與（不願/不能領取）</option>
+        <div class="field-label">參與狀態</div>
+        <select id="o-participate" onchange="togglePreRenewal()">
+          <option value="true" ${!owner?.participate||owner?.participate==='true'||owner?.participate===true?'selected':''}>參與選配</option>
+          <option value="post" ${owner?.participate==='post'?'selected':''}>不參與（領更新後價值）</option>
+          <option value="false" ${owner?.participate==='false'||owner?.participate===false?'selected':''}>不參與（領更新前價值）</option>
         </select>
       </div>
       <div>
@@ -985,6 +987,10 @@ function openOwnerModal(ownerId) {
           <option value="true" ${owner?.has_agent==='true'||owner?.has_agent===true?'selected':''}>有</option>
         </select>
       </div>
+    </div>
+    <div class="mb-12" id="pre-renewal-block" style="display:${owner?.participate==='false'?'':'none'};">
+      <div class="field-label">更新前價值（元）</div>
+      <input type="number" id="o-pre-renewal" value="${owner?.pre_renewal_value||''}" placeholder="待補，由估價師提供">
     </div>
     <div class="mb-16">
       <div class="field-label">代理人姓名</div>
@@ -1007,9 +1013,10 @@ async function submitOwner(ownerId) {
     address:      document.getElementById('o-address').value,
     rights_value: Number(document.getElementById('o-rights').value),
     handler:      document.getElementById('o-handler').value,
-    participate:  document.getElementById('o-participate').value,
-    has_agent:    document.getElementById('o-hasagent').value,
-    agent_name:   document.getElementById('o-agentname').value,
+    participate:       document.getElementById('o-participate').value,
+    has_agent:         document.getElementById('o-hasagent').value,
+    agent_name:        document.getElementById('o-agentname').value,
+    pre_renewal_value: document.getElementById('o-pre-renewal')?.value || '',
   };
   const idVal = document.getElementById('o-id').value;
   if (idVal) data.id_number = idVal;
@@ -1087,6 +1094,12 @@ function openCallModal(ownerId) {
   `;
   openModal();
   if (!owner) filterCallOwner('');
+}
+
+function togglePreRenewal() {
+  const val = document.getElementById('o-participate')?.value;
+  const el  = document.getElementById('pre-renewal-block');
+  if (el) el.style.display = val === 'false' ? '' : 'none';
 }
 
 function toggleCallerName() {
@@ -1251,32 +1264,74 @@ async function doExport() {
     const data = await apiGet('export');
     const records = data.records || [];
     if (!records.length) { alert('無資料可匯出'); return; }
+    if (typeof XLSX === 'undefined') { alert('試算表函式庫尚未載入，請重新整理頁面'); return; }
 
-    const BOM = '\uFEFF';
-    const esc = v => `"${String(v||'').replace(/"/g,'""')}"`;
-    const lines = [];
+    const wb = XLSX.utils.book_new();
 
-    // 彙整表（超選/退選統計）
+    // ── 彙整頁 ──
     if (data.summary) {
-      lines.push('【選配彙整】');
-      Object.entries(data.summary).forEach(([k,v]) => lines.push(`${esc(k)},${esc(v)}`));
-      lines.push('');  // blank line
+      const sumRows = [['項目','數值']];
+      Object.entries(data.summary).forEach(([k,v]) => sumRows.push([k, v]));
+      const sumWs = XLSX.utils.aoa_to_sheet(sumRows);
+      sumWs['!cols'] = [{wch:20},{wch:20}];
+      XLSX.utils.book_append_sheet(wb, sumWs, '選配彙整');
     }
 
-    // 選配明細
-    lines.push('【選配明細】');
+    // ── 明細頁 ──
     const headers = Object.keys(records[0]);
-    lines.push(headers.map(esc).join(','));
-    records.forEach(r => lines.push(headers.map(h => esc(r[h])).join(',')));
+    const aoa = [headers];
 
-    const blob = new Blob([BOM + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
+    // 先整理每位地主最後一列的 row index（用於填合計找補）
+    // records 已按地主分組，找每個地主最後一列
+    const ownerLastRow = {};  // name+serial → last row index
+    records.forEach((r, i) => {
+      const key = `${r['編號']}_${r['受配人姓名']}`;
+      ownerLastRow[key] = i + 2;  // +2 因為 aoa 有 header 在 row 1
+    });
+
+    // 找補欄 index
+    const settleIdx = headers.indexOf('找補');
+
+    records.forEach((r, i) => {
+      const row = headers.map(h => {
+        const v = r[h];
+        return v === undefined || v === null ? '' : v;
+      });
+      aoa.push(row);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // 欄寬
+    ws['!cols'] = headers.map(h => {
+      const w = { '編號':6, '受配人姓名':10, '應分配權利價值':14, '房屋單元編號':12,
+        '單元價值':12, '房屋權利分子':8, '房屋權利分母':8, '價值小計A':12,
+        '車位單元編號':12, '車位價值':10, '車位權利分子':8, '車位權利分母':8,
+        '價值小計B':12, '實分配權利價值':14, '找補':14, '備註':20 }[h] || 10;
+      return { wch: w };
+    });
+
+    // 找補欄位著色：正數補差=紅，負數退款=藍
+    if (settleIdx >= 0) {
+      records.forEach((r, i) => {
+        const cellAddr = XLSX.utils.encode_cell({ r: i+1, c: settleIdx });
+        const val = r['找補'] || '';
+        if (!val || val === '—') return;
+        if (!ws[cellAddr]) ws[cellAddr] = { t:'s', v: val };
+        ws[cellAddr].s = {
+          font: {
+            color: { rgb: val.startsWith('繳') ? 'CC0000' : '0000CC' },
+            bold: true
+          }
+        };
+      });
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, '選配明細');
+
     const caseName = STATE.caseConfig?.case_name || '清水段';
-    a.download = `${caseName}_選配結果_顧問用_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const fname = `${caseName}_選配結果_顧問用_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, fname, { bookType: 'xlsx', type: 'binary', cellStyles: true });
   } catch(e) { alert('匯出失敗：' + e.message); }
 }
 
@@ -1507,8 +1562,8 @@ function printApplication(ownerId) {
       const gUnits = Array.isArray(g.unit_nos) ? g.unit_nos : JSON.parse(g.unit_nos||'[]');
       const gParks = Array.isArray(g.parking_nos) ? g.parking_nos : JSON.parse(g.parking_nos||'[]');
       const n = (g.members||[]).length;
-      gUnits.forEach(u => mergeUnits.push(`${u}（共有 1/${n}）`));
-      gParks.forEach(p => mergeParks.push(`${p}（共有 1/${n}）`));
+      gUnits.forEach(u => mergeUnits.push(u));
+      gParks.forEach(p => mergeParks.push(p));
     });
   }
 
@@ -2114,6 +2169,7 @@ async function loadDashboard() {
   el.innerHTML = '<div style="text-align:center;color:var(--tt);padding:40px;">計算中…</div>';
   try {
     const [unitMap, parkMap] = await Promise.all([apiGet('getUnits'), apiGet('getParking')]);
+    window.DASHBOARD_UNIT_MAP = unitMap;  // 供樓層滑桿使用
     renderDashboard(unitMap, parkMap);
   } catch(e) {
     el.innerHTML = `<div style="color:var(--red-text);padding:20px;">載入失敗：${e.message}</div>`;
@@ -2341,14 +2397,20 @@ function syncFloorSlider() {
   minV.textContent = lo + 'F';
   maxV.textContent = hi + 'F';
 
-  // 從 unit-check-list 的 checkbox 裡讀所有剩餘戶別
-  const allBoxes = document.querySelectorAll('#unit-check-list input[type=checkbox]');
-  let inRange = 0, total = allBoxes.length;
-  allBoxes.forEach(cb => {
-    const unitNo = cb.value;  // e.g. "5F-A2"
-    const floorMatch = unitNo.match(/^(\d+)F-/);
-    if (floorMatch) {
-      const f = parseInt(floorMatch[1]);
+  // 從 DASHBOARD_UNIT_MAP 讀剩餘戶別（不依賴 checkbox）
+  const unitMap = window.DASHBOARD_UNIT_MAP || {};
+  const selectedUnits = new Set();
+  STATE.selections.filter(s => s.status !== 'deleted').forEach(s => {
+    (Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos||'[]')).forEach(u => selectedUnits.add(u));
+  });
+  let inRange = 0, total = 0;
+  Object.keys(unitMap).forEach(unitNo => {
+    if (unitNo.includes('-S')) return;
+    if (selectedUnits.has(unitNo)) return;
+    total++;
+    const m = unitNo.match(/^(\d+)F-/);
+    if (m) {
+      const f = parseInt(m[1]);
       if (f >= lo && f <= hi) inRange++;
     }
   });
