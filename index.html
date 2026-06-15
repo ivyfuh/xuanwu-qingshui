@@ -2265,8 +2265,11 @@ function calcUnitCheck(remTotal) {
 
 // 全選/清除
 function toggleAllUnits(check) {
-  document.querySelectorAll('#unit-check-list input[type=checkbox]').forEach(cb => cb.checked = check);
-  const remTotal = document.querySelectorAll('#unit-check-list input[type=checkbox]').length;
+  const allBoxes = document.querySelectorAll('#unit-check-list input[type=checkbox]');
+  allBoxes.forEach(cb => cb.checked = check);
+  // remTotal = 所有戶型的剩餘戶別加總
+  let remTotal = 0;
+  allBoxes.forEach(cb => { remTotal += parseInt(cb.dataset.count||0); });
   calcUnitCheck(remTotal);
 }
 
