@@ -311,10 +311,24 @@ body { background: var(--ct); }
   <!-- 公告欄（最上方顯眼處） -->
   <div id="announcement-area"></div>
 
-  <!-- Stats — 只顯示固定資訊，不顯示剩餘數量 -->
-  <div class="stats-row">
-    <div class="stat-card"><div class="stat-n" style="color:var(--brand-text);" id="s-units">328</div><div class="stat-l">可選戶別</div></div>
-    <div class="stat-card"><div class="stat-n" style="color:var(--brand);" id="s-parking">264</div><div class="stat-l">車位</div></div>
+  <!-- 倒數計時橫幅 -->
+  <div id="countdown-banner" style="display:none;background:linear-gradient(135deg,var(--brand-dark),var(--brand));
+    border-radius:var(--rl);padding:16px 24px;margin-bottom:16px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div style="font-size:12px;color:rgba(255,255,255,.75);margin-bottom:2px;letter-spacing:.04em;">選屋截止倒數</div>
+      <div style="font-size:32px;font-weight:600;color:#fff;line-height:1;" id="countdown-days">—</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">天</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:rgba(255,255,255,.7);margin-bottom:4px;">截止日期</div>
+      <div style="font-size:15px;font-weight:500;color:#fff;" id="countdown-end-date">—</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.65);margin-top:6px;" id="countdown-detail"></div>
+    </div>
+  </div>
+
+  <!-- Stats — 基本資訊 -->
+  <div class="stats-row" style="grid-template-columns:repeat(2,1fr);">
     <div class="stat-card"><div class="stat-n" id="s-floors" style="color:var(--brand-text);">21F</div><div class="stat-l">最高樓層</div></div>
     <div class="stat-card"><div class="stat-n" id="s-basement" style="color:var(--brand-text);">B5</div><div class="stat-l">地下層數</div></div>
   </div>
@@ -485,6 +499,17 @@ async function loadConfig() {
     document.getElementById('status-badge').innerHTML = `<i class="ti ti-pencil"></i> 選屋進行中`;
     document.getElementById('status-badge').style.background = 'rgba(255,255,255,.22)';
     document.getElementById('status-badge').style.color = '#fff';
+    // 倒數橫幅
+    const banner = document.getElementById('countdown-banner');
+    if (banner) {
+      banner.style.display = 'flex';
+      document.getElementById('countdown-days').textContent = days;
+      document.getElementById('countdown-end-date').textContent = end.toLocaleDateString('zh-TW', {year:'numeric',month:'long',day:'numeric'});
+      // 精確到時分
+      const hours = Math.max(0, Math.floor((end - new Date()) / 3600000));
+      const hLeft = hours % 24;
+      document.getElementById('countdown-detail').textContent = days > 0 ? `還剩約 ${hLeft} 小時` : '今天截止';
+    }
   }
   if (cfg.lottery_date) document.getElementById('tl-lottery').textContent = cfg.lottery_date;
   // 多則公告
