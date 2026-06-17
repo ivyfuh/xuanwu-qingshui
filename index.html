@@ -883,6 +883,14 @@ function openSelectionModal(ownerId) {
   const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
   const parkNos = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
 
+  // 預先載入戶別車位資料（供超選擋關用）
+  if (!window.DASHBOARD_UNIT_MAP) {
+    apiGet('getUnits').then(d => { if (d) window.DASHBOARD_UNIT_MAP = d; });
+  }
+  if (!MERGE_STATE.parkMap) {
+    apiGet('getParking').then(d => { if (d) MERGE_STATE.parkMap = d; });
+  }
+
   document.getElementById('modal-title').textContent = (sel ? '改選' : '新增選配') + ' — ' + (owner?.name||'');
   document.getElementById('modal-body').innerHTML = `
     <div class="grid-2 mb-12">
@@ -1009,13 +1017,14 @@ async function submitSelection(ownerId, status) {
   const usageForCheck = MERGE_STATE?.usage?.[ownerId];
   const mergeInvestedCheck = usageForCheck ? (Number(usageForCheck.merge_invested)||0) : 0;
   const limitForCheck = Number(ownerForCheck?.upper_limit||0) - mergeInvestedCheck;
-  if (limitForCheck > 0) {
-    const cachedUnitMap = MERGE_STATE?.unitMap;
-    const cachedParkMap = MERGE_STATE?.parkMap;
-    if (cachedUnitMap && cachedParkMap) {
+  if (limitForCheck > 0 && (units.length > 0 || parks.length > 0)) {
+    // 用 STATE 裡已快取的戶別車位資料，沒有就用 MERGE_STATE
+    const uMap = window.DASHBOARD_UNIT_MAP || MERGE_STATE?.unitMap;
+    const pMap = MERGE_STATE?.parkMap;
+    if (uMap) {
       let totalCheck = 0;
-      units.forEach(u => { if (cachedUnitMap[u]) totalCheck += cachedUnitMap[u].total_value; });
-      parks.forEach(p => { if (cachedParkMap[p]) totalCheck += cachedParkMap[p].price; });
+      units.forEach(u => { if (uMap[u]) totalCheck += Number(uMap[u].total_value||0); });
+      if (pMap) parks.forEach(p => { if (pMap[p]) totalCheck += Number(pMap[p].price||0); });
       if (totalCheck > limitForCheck && totalCheck > 0) {
         alert(`選配總價 NT$${fmt(totalCheck)} 超過上限 NT$${fmt(limitForCheck)}（110%），不能送出`);
         btnReset(btn);
