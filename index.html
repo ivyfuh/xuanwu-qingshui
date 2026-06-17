@@ -276,6 +276,17 @@ tr.selected td{background:#EDF5FB;}
         <div id="dashboard-content">
           <div style="text-align:center;color:var(--tt);padding:40px;">載入中…</div>
         </div>
+
+        <!-- 抽籤管理 -->
+        <div style="margin-top:24px;">
+          <div class="flex items-center justify-between mb-12">
+            <h3 style="font-size:14px;font-weight:500;"><i class="ti ti-dice"></i> 抽籤管理</h3>
+            <button class="btn-secondary" onclick="loadLotteryList()"><i class="ti ti-refresh"></i> 重新整理</button>
+          </div>
+          <div id="lottery-content">
+            <div style="text-align:center;color:var(--tt);padding:20px;">載入中…</div>
+          </div>
+        </div>
       </div>
       <div id="view-settle" style="display:none;">
         <div class="flex items-center justify-between mb-16">
@@ -416,23 +427,43 @@ async function loadAll() {
 }
 
 async function loadDocStatus() {
+  try {
+    // 嘗試 v2（兩階段），失敗則 fallback 到 v1
+    const v2 = await apiGet('getDocStatusV2');
+    if (v2) { STATE.docStatus = v2; return; }
+  } catch(e) {}
   try { STATE.docStatus = await apiGet('getDocStatus') || {}; }
   catch(e) { console.error('loadDocStatus', e); STATE.docStatus = {}; }
 }
 
 function ownerDocProgress(ownerId) {
-  const has = STATE.docStatus[ownerId] || {};
-  const owner = STATE.owners.find(o => o.owner_id == ownerId);
+  const has    = STATE.docStatus[ownerId] || {};
+  const owner  = STATE.owners.find(o => o.owner_id == ownerId);
   const required = requiredDocsFor(owner);
-  const done = required.filter(dt => has[dt.key]).length;
+  // 「完成」定義：已上傳歸檔（uploaded=true）或舊格式 true
+  const done   = required.filter(dt => {
+    const v = has[dt.key];
+    if (!v) return false;
+    if (v === true) return true;
+    return !!v.uploaded;
+  }).length;
+  // 「現場已收」：physical=true 但未上傳
+  const physOnly = required.filter(dt => {
+    const v = has[dt.key];
+    if (!v || v === true) return false;
+    return v.physical && !v.uploaded;
+  }).length;
   const missing = required.filter(dt => !has[dt.key]).map(dt => dt.key);
-  return { done, total: required.length, missing };
+  return { done, total: required.length, physOnly, missing };
 }
 
 function docProgressBadge(ownerId) {
   const prog = ownerDocProgress(ownerId);
   if (prog.done === prog.total) {
     return `<span style="font-size:10px;color:var(--green-text);background:var(--green-bg);padding:0 6px;border-radius:6px;">收件齊全</span>`;
+  }
+  if (prog.physOnly > 0) {
+    return `<span style="font-size:10px;color:var(--brand-text);background:var(--brand-light);padding:0 6px;border-radius:6px;" title="缺：${prog.missing.join('、')}">實體 ${prog.done + prog.physOnly}/${prog.total}，待掃描</span>`;
   }
   return `<span style="font-size:10px;color:var(--red-text);background:var(--red-bg);padding:0 6px;border-radius:6px;" title="缺：${prog.missing.join('、')}">收件 ${prog.done}/${prog.total}</span>`;
 }
@@ -737,26 +768,110 @@ function renderOwnerDetail(ownerId) {
 }
 
 function renderDocChecklist(ownerId) {
-  const owner = STATE.owners.find(o => o.owner_id == ownerId);
-  const has = STATE.docStatus[ownerId] || {};
-  const prog = ownerDocProgress(ownerId);
+  const owner  = STATE.owners.find(o => o.owner_id == ownerId);
+  const has    = STATE.docStatus[ownerId] || {};   // { docType: { physical, uploaded } 或 true(舊格式) }
+  const isTrust = !!(owner?.trust_partner_name);
+  const trustName = owner?.trust_partner_name || '';
+  const prog   = ownerDocProgress(ownerId);
+  const allDone = prog.done === prog.total;
+
+  // 判斷各文件的兩階段狀態
+  function getStatus(dtKey) {
+    const v = has[dtKey];
+    if (!v) return { physical: false, uploaded: false };
+    if (v === true) return { physical: true, uploaded: true };   // 舊格式相容
+    return { physical: !!v.physical, uploaded: !!v.uploaded };
+  }
+
   const items = requiredDocsFor(owner).map(dt => {
-    const done = !!has[dt.key];
-    return `<div class="flex items-center gap-6" style="padding:4px 0;font-size:12px;">
-      <i class="ti ${done?'ti-circle-check-filled':'ti-circle'}" style="font-size:15px;color:${done?'var(--green)':'var(--tt)'};"></i>
-      <span style="color:${done?'var(--tp)':'var(--tt)'};">${dt.key}</span>
-      ${done?'':`<span style="margin-left:auto;font-size:10px;color:var(--red-text);">待補</span>`}
+    const st = getStatus(dt.key);
+    const uploaded = st.uploaded;
+    const physical = st.physical;
+
+    // 狀態圖示：已歸檔 > 已收實體 > 待收
+    const icon = uploaded
+      ? `<i class="ti ti-circle-check-filled" style="font-size:15px;color:var(--green);"></i>`
+      : physical
+        ? `<i class="ti ti-circle-check" style="font-size:15px;color:var(--brand);"></i>`
+        : `<i class="ti ti-circle" style="font-size:15px;color:var(--tt);"></i>`;
+
+    const statusLabel = uploaded
+      ? `<span style="font-size:10px;color:var(--green-text);margin-left:auto;">已歸檔</span>`
+      : physical
+        ? `<span style="font-size:10px;color:var(--brand-text);margin-left:auto;">實體✓ 待掃</span>`
+        : `<span style="font-size:10px;color:var(--red-text);margin-left:auto;">待收</span>`;
+
+    // 現場快速勾選按鈕（僅實體未確認時顯示）
+    const quickBtn = !physical && !uploaded
+      ? `<button onclick="markPhysical('${ownerId}','${dt.key}',true,this)"
+           style="font-size:10px;padding:1px 6px;border:0.5px solid var(--brand);
+           color:var(--brand-text);background:var(--brand-light);border-radius:4px;
+           cursor:pointer;white-space:nowrap;flex-shrink:0;">現場✓</button>`
+      : physical && !uploaded
+        ? `<button onclick="markPhysical('${ownerId}','${dt.key}',false,this)"
+             style="font-size:10px;padding:1px 6px;border:0.5px solid var(--bt);
+             color:var(--tt);background:var(--cs);border-radius:4px;
+             cursor:pointer;white-space:nowrap;flex-shrink:0;">取消</button>`
+        : '';
+
+    // 信託地主：每份文件需要兩份
+    const trustNote = isTrust
+      ? `<div style="font-size:10px;color:var(--brand-text);padding:1px 0 3px 21px;">↳ 需兩份：${owner.name} + ${trustName}</div>`
+      : '';
+
+    return `<div style="padding:4px 0;">
+      <div class="flex items-center gap-6" style="font-size:12px;">
+        ${icon}
+        <span style="color:${uploaded?'var(--tp)':physical?'var(--tp)':'var(--tt)'};">${dt.key}</span>
+        ${statusLabel}
+        ${quickBtn}
+      </div>
+      ${trustNote}
     </div>`;
   }).join('');
-  const allDone = prog.done === prog.total;
+
+  // 信託提示橫幅
+  const trustBanner = isTrust
+    ? `<div style="background:#E8EDF0;border:0.5px solid var(--brand);border-radius:6px;
+         padding:6px 10px;font-size:11px;color:var(--brand-text);margin-bottom:8px;">
+        <i class="ti ti-shield-check"></i> 信託關係：每份文件需收委託人（${owner.name}）及受託人（${trustName}）各一份
+       </div>` : '';
+
   return `<div style="margin-top:16px;border-top:0.5px solid var(--bt);padding-top:12px;">
     <div class="flex items-center justify-between mb-8">
       <span class="text-xs text-muted font-medium">收件進度</span>
       <span style="font-size:12px;font-weight:500;color:${allDone?'var(--green-text)':'var(--orange-text)'};">${prog.done} / ${prog.total}</span>
     </div>
+    ${trustBanner}
+    <div style="display:flex;gap:16px;font-size:10px;color:var(--tt);margin-bottom:6px;">
+      <span><i class="ti ti-circle-check-filled" style="color:var(--green);font-size:12px;"></i> 已歸檔</span>
+      <span><i class="ti ti-circle-check" style="color:var(--brand);font-size:12px;"></i> 實體收到，待掃描</span>
+      <span><i class="ti ti-circle" style="font-size:12px;"></i> 待收</span>
+    </div>
     ${items}
-    <div class="text-xs text-muted" style="margin-top:6px;">上傳對應文件即自動標記為已收</div>
   </div>`;
+}
+
+// 現場勾選實體收件
+async function markPhysical(ownerId, docType, received, btnEl) {
+  const owner = STATE.owners.find(o => o.owner_id == ownerId);
+  btnEl.disabled = true;
+  btnEl.textContent = '…';
+  try {
+    await apiPost('markPhysicalReceived', {
+      owner_id: ownerId,
+      owner_name: owner?.name || '',
+      doc_type: docType,
+      received,
+    });
+    await loadDocStatus();
+    // 重新渲染 detail panel
+    renderOwnerDetail(ownerId);
+  } catch(e) {
+    btnEl.disabled = false;
+    btnEl.textContent = received ? '現場✓' : '取消';
+    alert('操作失敗：' + e.message);
+  }
 }
 
 // ============================================================
@@ -825,9 +940,13 @@ function previewSelection(ownerId) {
   const mergeInvested = usage ? (Number(usage.merge_invested)||0) : 0;
   const limit  = Number(owner?.upper_limit||0) - mergeInvested;
 
+  // 一戶一車即時提示
+  const carWarnHtml = parks.length > units.length
+    ? `<div style="background:var(--red-bg);color:var(--red-text);padding:6px 10px;border-radius:6px;font-size:12px;margin-bottom:6px;"><i class="ti ti-alert-circle"></i> 車位數（${parks.length}）超過戶別數（${units.length}），不符「一戶一車」規定</div>` : '';
+
   // Simple validation + calc
   let total = 0;
-  document.getElementById('sel-validation').innerHTML = '<div class="text-xs text-muted">試算中…</div>';
+  document.getElementById('sel-validation').innerHTML = carWarnHtml + '<div class="text-xs text-muted">試算中…</div>';
   apiGet('getUnits').then(unitMap => {
     apiGet('getParking').then(parkMap => {
       let errs = [];
@@ -878,13 +997,19 @@ async function submitSelection(ownerId, status) {
   const phone   = document.getElementById('sel-phone')?.value || '';
   const address = document.getElementById('sel-address')?.value || '';
   const btn = document.querySelector('#modal-box .btn-primary, #modal-box .btn-success');
-  // 後端前硬擋超選（防止繞過試算直接送）
+  // ── 前端雙重擋關 ──
+  // 1. 一戶一車：車位數不得超過戶別數
+  if (parks.length > units.length) {
+    alert(`車位數（${parks.length}）不得超過戶別數（${units.length}）\n規定：一房屋至多搭配一車位`);
+    btnReset(btn);
+    return;
+  }
+  // 2. 超選擋關
   const ownerForCheck = STATE.owners.find(o => o.owner_id == ownerId);
   const usageForCheck = MERGE_STATE?.usage?.[ownerId];
   const mergeInvestedCheck = usageForCheck ? (Number(usageForCheck.merge_invested)||0) : 0;
   const limitForCheck = Number(ownerForCheck?.upper_limit||0) - mergeInvestedCheck;
   if (limitForCheck > 0) {
-    // 快速算選配總價（從 unitMap cache 或直接擋）
     const cachedUnitMap = MERGE_STATE?.unitMap;
     const cachedParkMap = MERGE_STATE?.parkMap;
     if (cachedUnitMap && cachedParkMap) {
@@ -893,6 +1018,7 @@ async function submitSelection(ownerId, status) {
       parks.forEach(p => { if (cachedParkMap[p]) totalCheck += cachedParkMap[p].price; });
       if (totalCheck > limitForCheck && totalCheck > 0) {
         alert(`選配總價 NT$${fmt(totalCheck)} 超過上限 NT$${fmt(limitForCheck)}（110%），不能送出`);
+        btnReset(btn);
         return;
       }
     }
@@ -2174,6 +2300,7 @@ async function loadDashboard() {
   } catch(e) {
     el.innerHTML = `<div style="color:var(--red-text);padding:20px;">載入失敗：${e.message}</div>`;
   }
+  loadLotteryList();
 }
 
 function renderDashboard(unitMap, parkMap) {
@@ -2269,13 +2396,33 @@ function renderDashboard(unitMap, parkMap) {
     return Math.max(m, f);
   }, 21);
 
-  // 依戶型代號分組（剩餘）：A1、A2、B1...
+  // 房型對應表（依你提供的資料）
+  const ROOM_TYPE_MAP = {
+    'S1':'店面','S2':'店面','S3':'店面','S5':'店面','S6':'店面','S7':'店面','S8':'店面','S9':'店面',
+    'A8':'2房1衛 IH','A9':'2房1衛 IH','B8':'2房1衛 IH','B9':'2房1衛 IH',
+    'A1':'2房2衛 IH','A5':'2房2衛 IH','A6':'2房2衛 IH','B1':'2房2衛 IH','B5':'2房2衛 IH','B6':'2房2衛 IH',
+    'B2':'3房2衛 IH','B3':'3房2衛 IH',
+    'A2':'3房2衛 瓦斯','A3':'3房2衛 瓦斯','A7':'3房2衛 瓦斯','B7':'3房2衛 瓦斯',
+  };
+
+  // 依戶型代號分組（剩餘）：A1、A2、B1...，並附上房型標籤
   const unitTypeMap = {};
   remUnitList.forEach(u => {
     const t = u.unit_type || u.unit_no.replace(/^\d+F-/, '');
     unitTypeMap[t] = (unitTypeMap[t]||0) + 1;
   });
   const unitTypeGroups = Object.entries(unitTypeMap).sort((a,b) => a[0].localeCompare(b[0]));
+
+  // 依房型分組統計（剩餘）
+  const roomGroupMap = {};
+  unitTypeGroups.forEach(([type, count]) => {
+    const room = ROOM_TYPE_MAP[type] || '其他';
+    if (!roomGroupMap[room]) roomGroupMap[room] = { count: 0, types: [] };
+    roomGroupMap[room].count += count;
+    roomGroupMap[room].types.push(type);
+  });
+  const roomGroups = Object.entries(roomGroupMap).filter(([r]) => r !== '店面')
+    .sort((a,b) => b[1].count - a[1].count);
 
   el.innerHTML = `
     <!-- 主要數字 -->
@@ -2367,10 +2514,20 @@ function renderDashboard(unitMap, parkMap) {
 
     <!-- 剩餘戶型分布 -->
     <div class="card">
-      <div style="font-size:13px;font-weight:500;margin-bottom:12px;">剩餘戶型分布
-        <span class="text-xs text-muted font-normal">（依戶型代號，等房型資料確認後可合併為幾房）</span>
-      </div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:12px;">剩餘戶型分布</div>
       ${typeTotal > 0 ? `
+      <!-- 按房型分組 -->
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px;">
+        ${roomGroups.map(([room, info]) => {
+          const pct = typeTotal > 0 ? Math.round(info.count / typeTotal * 100) : 0;
+          return `<div style="background:var(--brand-light);border-radius:var(--rm);padding:10px 12px;">
+            <div style="font-size:12px;font-weight:500;color:var(--brand-text);margin-bottom:4px;">${room}</div>
+            <div style="font-size:20px;font-weight:500;color:var(--tp);">${info.count}<span style="font-size:12px;font-weight:400;color:var(--ts);"> 戶</span></div>
+            <div style="font-size:10px;color:var(--tt);">佔剩餘 ${pct}%・${info.types.join('、')}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <!-- 戶型圓餅圖 -->
       <div class="flex gap-24 items-center">
         <div>${pieSvg}</div>
         <div style="flex:1;">${legend}</div>
@@ -2382,7 +2539,126 @@ function renderDashboard(unitMap, parkMap) {
   syncFloorSlider();
 }
 
-// 樓層滑桿即時計算
+// ============================================================
+//  抽籤管理
+// ============================================================
+function loadLotteryList() {
+  const el = document.getElementById('lottery-content');
+  if (!el) return;
+
+  const sels = STATE.selections.filter(s => s.status !== 'deleted');
+
+  // 找出有重複的戶別
+  const unitCount = {}, parkCount = {};
+  sels.forEach(s => {
+    const units = Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos||'[]');
+    const parks = Array.isArray(s.parking_nos) ? s.parking_nos : JSON.parse(s.parking_nos||'[]');
+    units.forEach(u => {
+      if (!unitCount[u]) unitCount[u] = [];
+      unitCount[u].push(s.owner_id);
+    });
+    parks.forEach(p => {
+      if (!parkCount[p]) parkCount[p] = [];
+      parkCount[p].push(s.owner_id);
+    });
+  });
+
+  const dupUnits = Object.entries(unitCount).filter(([,ids]) => ids.length >= 2);
+  const dupParks = Object.entries(parkCount).filter(([,ids]) => ids.length >= 2);
+
+  if (!dupUnits.length && !dupParks.length) {
+    el.innerHTML = `<div style="text-align:center;color:var(--green-text);padding:16px;background:var(--green-bg);border-radius:var(--rm);">
+      <i class="ti ti-circle-check" style="font-size:20px;display:block;margin-bottom:4px;"></i>
+      目前無重複選配，不需抽籤
+    </div>`;
+    return;
+  }
+
+  const renderGroup = (label, dups, type) => dups.map(([code, ownerIds]) => {
+    const owners = ownerIds.map(oid => {
+      const o = STATE.owners.find(x => x.owner_id == oid);
+      const s = STATE.selections.find(x => x.owner_id == oid && x.status !== 'deleted');
+      const st = s?.status || '';
+      return { oid, name: o?.name || oid, status: st };
+    });
+
+    const hasWinner = owners.some(o => o.status === 'confirmed' &&
+      STATE.selections.find(s => s.owner_id == o.oid)?.status === 'confirmed');
+
+    return `<div class="card mb-12" style="border-left:3px solid var(--red);">
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <span style="font-size:13px;font-weight:500;">${label} ${code}</span>
+          <span style="font-size:11px;color:var(--red-text);background:var(--red-bg);padding:1px 6px;border-radius:6px;margin-left:6px;">${owners.length}人重複</span>
+        </div>
+        ${hasWinner ? `<span style="font-size:11px;color:var(--green-text);background:var(--green-bg);padding:2px 8px;border-radius:6px;">已抽籤</span>` : ''}
+      </div>
+      <div style="margin-bottom:10px;">
+        ${owners.map(o => `<div class="flex items-center gap-8" style="padding:4px 0;border-bottom:0.5px solid var(--bt);font-size:12px;">
+          <span>${o.name}</span>
+          <span style="font-size:10px;color:var(--tt);">${o.oid}</span>
+          ${o.status === 'needs_reselect'
+            ? `<span style="margin-left:auto;font-size:10px;color:var(--orange-text);background:var(--orange-bg);padding:1px 6px;border-radius:4px;">落選需改選</span>`
+            : o.status === 'confirmed'
+              ? `<span style="margin-left:auto;font-size:10px;color:var(--green-text);background:var(--green-bg);padding:1px 6px;border-radius:4px;">得獎</span>`
+              : `<span style="margin-left:auto;font-size:10px;color:var(--tt);">草稿</span>`}
+        </div>`).join('')}
+      </div>
+      ${!hasWinner ? `
+      <div class="flex gap-8 items-center">
+        <select id="winner-${type}-${code}" style="flex:1;padding:6px 8px;border:0.5px solid var(--bs);border-radius:var(--rm);background:var(--cp);">
+          <option value="">選擇得獎者…</option>
+          ${owners.map(o => `<option value="${o.oid}">${o.name}</option>`).join('')}
+        </select>
+        <input type="date" id="ldate-${type}-${code}" style="width:130px;padding:6px 8px;border:0.5px solid var(--bs);border-radius:var(--rm);">
+        <button class="btn-primary" style="white-space:nowrap;"
+          onclick="submitLottery('${code}','${type}',${JSON.stringify(ownerIds)})">
+          <i class="ti ti-check"></i> 登錄結果
+        </button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    ${dupUnits.length ? `<div style="font-size:12px;font-weight:500;color:var(--ts);margin-bottom:8px;">戶別重複（${dupUnits.length} 組）</div>
+    ${renderGroup('戶別', dupUnits, 'unit')}` : ''}
+    ${dupParks.length ? `<div style="font-size:12px;font-weight:500;color:var(--ts);margin-bottom:8px;margin-top:16px;">車位重複（${dupParks.length} 組）</div>
+    ${renderGroup('車位', dupParks, 'park')}` : ''}
+  `;
+}
+
+async function submitLottery(code, type, ownerIds) {
+  const selId = `winner-${type}-${code}`;
+  const dateId = `ldate-${type}-${code}`;
+  const winnerId = document.getElementById(selId)?.value;
+  const lDate   = document.getElementById(dateId)?.value;
+  if (!winnerId) { alert('請先選擇得獎者'); return; }
+  if (!lDate)    { alert('請填寫抽籤日期'); return; }
+
+  const losers = ownerIds.filter(id => id !== winnerId);
+  const btn = document.querySelector(`[onclick*="submitLottery('${code}'"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '處理中…'; }
+
+  try {
+    await apiPost('lottery', {
+      unit_no: code,
+      winner_owner_id: winnerId,
+      losers,
+      lottery_date: lDate,
+    });
+    await Promise.all([loadSelections()]);
+    loadLotteryList();
+    renderOwnerList();
+    alert(`已登錄！得獎者選配狀態已更新，落選者已標記需改選。`);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '登錄結果'; }
+    alert('失敗：' + e.message);
+  }
+}
+
+// ============================================================
+//  樓層滑桿即時計算
+// ============================================================
 function syncFloorSlider() {
   const minEl = document.getElementById('floor-min');
   const maxEl = document.getElementById('floor-max');
