@@ -2639,7 +2639,7 @@ function renderDashboard(unitMap, parkMap) {
     return `<div class="flex items-center gap-6" style="margin-bottom:6px;">
       <div style="width:10px;height:10px;border-radius:2px;flex-shrink:0;background:${rt.color};"></div>
       <span style="font-size:12px;">${rt.name}</span>
-      <span class="text-muted text-xs">${count}戶 ${pct}%</span>
+      <span class="text-muted text-xs">${rt.count}戶 ${pct}%</span>
     </div>`;
   }).join('');
 
