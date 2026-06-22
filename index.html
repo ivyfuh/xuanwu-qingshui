@@ -616,6 +616,11 @@ function renderOwnerList() {
     const isActive = STATE.selected_owner_id == o.owner_id;
     const prog = ownerDocProgress(o.owner_id);
     const docOk = prog.done === prog.total;
+    // 只有已選屋（有 sel）且非不參與才顯示收件狀態
+    const hasSelection = sel && !nonpart;
+    const docBadge = !hasSelection ? '' : docOk
+      ? `<span class="badge badge-ok" style="font-size:10px;">收件齊全</span>`
+      : `<span class="badge badge-dup" style="font-size:10px;" title="缺：${prog.missing.join('、')}">缺 ${prog.missing.slice(0,2).join('、')}${prog.missing.length>2?'…':''}</span>`;
 
     // 選屋結果列：顯示戶別車位，重複的用紅字 + 標出與誰重複
     let selLine = '';
@@ -653,9 +658,7 @@ function renderOwnerList() {
         ${selLine}
       </div>
       <div style="padding-top:2px;">${statusBadge}</div>
-      <div style="padding-top:2px;">${docOk
-        ? `<span class="badge badge-ok" style="font-size:10px;">收件齊全</span>`
-        : `<span class="badge badge-dup" style="font-size:10px;" title="缺：${prog.missing.join('、')}">缺 ${prog.missing.slice(0,2).join('、')}${prog.missing.length>2?'…':''}</span>`}</div>
+      <div style="padding-top:2px;">${docBadge}</div>
       <div style="padding-top:2px;"><i class="ti ti-chevron-right" style="color:var(--tt);"></i></div>
     </div>`;
   }).join('');
@@ -2257,8 +2260,39 @@ async function loadSettle() {
   const el = document.getElementById('settle-content');
   el.innerHTML = '<div style="text-align:center;color:var(--tt);padding:40px;">計算中…</div>';
   try {
-    const data = await apiGet('getSettlementSummary');
-    renderSettle(data);
+    // 直接用前端已有的資料計算，不呼叫後端
+    const owners = STATE.owners || [];
+    const sels   = STATE.selections.filter(s => s.status !== 'deleted');
+    const mergeGroups = MERGE_STATE.groups || [];
+
+    // 計算每個地主的找補
+    const ownerList = owners.filter(o => o.participate !== 'false' && o.participate !== false).map(o => {
+      const sel = sels.find(s => s.owner_id == o.owner_id);
+      const ps  = sel ? (Number(sel.settlement)||0) : 0;
+
+      // 合併找補：找這個地主所在的合併組
+      let ms = 0;
+      mergeGroups.forEach(g => {
+        const ids = Array.isArray(g.owner_ids) ? g.owner_ids : JSON.parse(g.owner_ids||'[]');
+        if (ids.includes(o.owner_id)) {
+          const ratio = Number(g.merge_ratio) || (1 / ids.length);
+          const groupSel = Number(g.total_selected)||0;
+          const groupRights = Number(g.combined_rights)||0;
+          ms += (groupSel - groupRights) * ratio;
+        }
+      });
+
+      return {
+        owner_id: o.owner_id,
+        serial_no: o.serial_no,
+        name: o.name,
+        personal_settlement: ps,
+        merge_settlement: Math.round(ms),
+        total_settlement: ps + Math.round(ms),
+      };
+    });
+
+    renderSettle({ owners: ownerList, summary: {} });
   } catch(e) {
     el.innerHTML = `<div style="color:var(--red-text);padding:20px;">載入失敗：${e.message}</div>`;
   }
