@@ -838,6 +838,21 @@ function renderOwnerDetail(ownerId) {
     ${sel ? `<button class="btn-primary" style="width:100%;margin-top:6px;font-size:12px;" onclick="printApplication('${ownerId}')">
       <i class="ti ti-printer"></i> 列印分配位置申請書
     </button>` : ''}
+
+    <!-- 同意書狀態 -->
+    <div style="margin-top:12px;padding:10px 12px;background:var(--cs);border-radius:var(--rm);display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:12px;">
+        <i class="ti ti-file-check" style="color:${owner.consent_submitted===true||owner.consent_submitted==='true'?'var(--green)':'var(--tt)'};"></i>
+        已交同意書
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" 
+          ${owner.consent_submitted===true||owner.consent_submitted==='true'?'checked':''}
+          onchange="toggleConsent('${ownerId}', this.checked, this)"
+          style="width:15px;height:15px;cursor:pointer;">
+        <span style="font-size:11px;color:var(--tt);">${owner.consent_submitted===true||owner.consent_submitted==='true'?'已收':'未收'}</span>
+      </label>
+    </div>
     `}
 
     ${renderDocChecklist(ownerId)}
@@ -930,6 +945,24 @@ function renderDocChecklist(ownerId) {
 }
 
 // 現場勾選實體收件
+// 切換同意書狀態
+async function toggleConsent(ownerId, checked, el) {
+  el.disabled = true;
+  try {
+    await apiPost('toggleConsent', { owner_id: ownerId, consent: checked });
+    // 更新本地 STATE
+    const owner = STATE.owners.find(o => o.owner_id == ownerId);
+    if (owner) owner.consent_submitted = checked;
+    renderOwnerDetail(ownerId);
+    renderOwnerList();
+  } catch(e) {
+    el.checked = !checked; // 還原
+    alert('操作失敗：' + e.message);
+  } finally {
+    el.disabled = false;
+  }
+}
+
 async function markPhysical(ownerId, docType, received, btnEl) {
   const owner = STATE.owners.find(o => o.owner_id == ownerId);
   btnEl.disabled = true;
@@ -1529,6 +1562,9 @@ async function submitUpload(ownerId) {
 //  EXPORT
 // ============================================================
 async function doExport() {
+  // 確認對話框
+  const confirmed = confirm('確定要匯出選配結果嗎？\n將下載目前所有已登錄的選配資料（含草稿）。');
+  if (!confirmed) return;
   try {
     const data = await apiGet('export');
     const records = data.records || [];
@@ -2348,9 +2384,19 @@ async function deleteMerge(groupId) {
 // ============================================================
 function updateSidebar() {
   const sels  = STATE.selections.filter(s => s.status !== 'deleted');
-  // 重複：計算有重複選配的地主數（去重）
-  const dupOwners = new Set(sels.filter(s => checkDuplicate(s)).map(s => s.owner_id));
-  const dups = dupOwners.size;
+  // 重複：用選配記錄找出重複的戶別/車位，再計算涉及的地主數
+  const _uCount = {}, _pCount = {};
+  sels.forEach(s => {
+    const us = Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos||'[]');
+    const ps = Array.isArray(s.parking_nos) ? s.parking_nos : JSON.parse(s.parking_nos||'[]');
+    us.forEach(u => { if (!_uCount[u]) _uCount[u] = new Set(); _uCount[u].add(s.owner_id); });
+    ps.forEach(p => { if (!_pCount[p]) _pCount[p] = new Set(); _pCount[p].add(s.owner_id); });
+  });
+  const dupOwnerSet = new Set();
+  Object.values(_uCount).filter(ids => ids.size >= 2).forEach(ids => ids.forEach(id => dupOwnerSet.add(id)));
+  Object.values(_pCount).filter(ids => ids.size >= 2).forEach(ids => ids.forEach(id => dupOwnerSet.add(id)));
+  // 只算系統內存在的地主
+  const dups = [...dupOwnerSet].filter(id => STATE.owners.find(o => o.owner_id == id)).length;
   const done  = sels.filter(s => s.status === 'confirmed').length;
   const total = STATE.owners.length;
   document.getElementById('sb-done').textContent  = `${done} / ${total}`;
@@ -2493,8 +2539,13 @@ async function loadDashboard() {
   const el = document.getElementById('dashboard-content');
   el.innerHTML = '<div style="text-align:center;color:var(--tt);padding:40px;">計算中…</div>';
   try {
-    const [unitMap, parkMap] = await Promise.all([apiGet('getUnits'), apiGet('getParking')]);
-    window.DASHBOARD_UNIT_MAP = unitMap;  // 供樓層滑桿使用
+    const [unitMap, parkMap, consentRatio] = await Promise.all([
+      apiGet('getUnits'),
+      apiGet('getParking'),
+      apiGet('getConsentRatio').catch(() => null),
+    ]);
+    window.DASHBOARD_UNIT_MAP = unitMap;
+    window.CONSENT_RATIO = consentRatio;
     renderDashboard(unitMap, parkMap);
   } catch(e) {
     el.innerHTML = `<div style="color:var(--red-text);padding:20px;">載入失敗：${e.message}</div>`;
@@ -2625,7 +2676,37 @@ function renderDashboard(unitMap, parkMap) {
   const roomGroups = Object.entries(roomGroupMap).filter(([r]) => r !== '店面')
     .sort((a,b) => b[1].count - a[1].count);
 
+  // 同意比資料
+  const cr = window.CONSENT_RATIO || {};
+  const consentPct = cr.consent_count && cr.total_count
+    ? Math.round(cr.consent_count / cr.total_count * 100) : 0;
+
   el.innerHTML = `
+    <!-- 同意比 -->
+    ${cr.land_owner_ratio ? `
+    <div class="card mb-16">
+      <div style="font-size:13px;font-weight:500;margin-bottom:12px;">同意比例</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:600;color:${Number(cr.land_owner_ratio)>=75?'var(--green-text)':'var(--orange-text)'};">${cr.land_owner_ratio}%</div>
+          <div style="font-size:11px;color:var(--tt);margin-top:2px;">土地所有權人數</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:600;color:${Number(cr.land_area_ratio)>=75?'var(--green-text)':'var(--orange-text)'};">${cr.land_area_ratio}%</div>
+          <div style="font-size:11px;color:var(--tt);margin-top:2px;">土地面積</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:600;color:${Number(cr.build_owner_ratio)>=75?'var(--green-text)':'var(--orange-text)'};">${cr.build_owner_ratio}%</div>
+          <div style="font-size:11px;color:var(--tt);margin-top:2px;">建物所有權人數</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:600;color:${Number(cr.build_area_ratio)>=75?'var(--green-text)':'var(--orange-text)'};">${cr.build_area_ratio}%</div>
+          <div style="font-size:11px;color:var(--tt);margin-top:2px;">建物面積</div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--tt);margin-top:8px;text-align:right;">已交同意書 ${cr.consent_count} / ${cr.total_count} 人・更新 ${new Date(cr.updated_at).toLocaleString('zh-TW')}</div>
+    </div>` : ''}
+
     <!-- 主要數字 -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
       <div class="stat-card">
