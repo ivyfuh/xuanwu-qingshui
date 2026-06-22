@@ -623,7 +623,13 @@ function renderOwnerList() {
   const unselectedCount = participating.filter(o => {
     const s = getSelForOwner(o.owner_id); return !s || s.status==='draft';
   }).length;
-  const incompleteCount = all.filter(o => { const p = ownerDocProgress(o.owner_id); return p.done < p.total; }).length;
+  const incompleteCount = all.filter(o => {
+    const s = getSelForOwner(o.owner_id);
+    const np = (o.participate==='false'||o.participate===false||o.participate==='post');
+    if (!s || np) return false;  // 未選屋或不參與不算
+    const p = ownerDocProgress(o.owner_id);
+    return p.done < p.total;
+  }).length;
   const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false||o.participate==='post')).length;
 
   document.getElementById('st-total').textContent      = all.length;
@@ -2342,7 +2348,9 @@ async function deleteMerge(groupId) {
 // ============================================================
 function updateSidebar() {
   const sels  = STATE.selections.filter(s => s.status !== 'deleted');
-  const dups  = sels.filter(s => checkDuplicate(s)).length;
+  // 重複：計算有重複選配的地主數（去重）
+  const dupOwners = new Set(sels.filter(s => checkDuplicate(s)).map(s => s.owner_id));
+  const dups = dupOwners.size;
   const done  = sels.filter(s => s.status === 'confirmed').length;
   const total = STATE.owners.length;
   document.getElementById('sb-done').textContent  = `${done} / ${total}`;
@@ -2735,9 +2743,15 @@ function renderDashboard(unitMap, parkMap) {
 // ============================================================
 //  抽籤管理
 // ============================================================
-function loadLotteryList() {
+async function loadLotteryList() {
   const el = document.getElementById('lottery-content');
   if (!el) return;
+
+  // 若 selections 還沒載入，等一下
+  if (!STATE.selections || STATE.selections.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--tt);padding:20px;">載入中…</div>';
+    await loadSelections();
+  }
 
   const sels = STATE.selections.filter(s => s.status !== 'deleted');
 
