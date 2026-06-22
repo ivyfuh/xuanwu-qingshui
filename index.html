@@ -957,12 +957,24 @@ function openSelectionModal(ownerId) {
   // 預先載入戶別車位資料（快取未命中才呼叫）
   if (!window.CACHE?.units) preloadUnitParking();
 
+  const isNonpart = sel?.status === 'nonparticipate' || owner?.participate === 'false' || owner?.participate === false;
   document.getElementById('modal-title').textContent = (sel ? '改選' : '新增選配') + ' — ' + (owner?.name||'');
   document.getElementById('modal-body').innerHTML = `
     <div class="grid-2 mb-12">
       <div><div class="field-label">地主</div><input type="text" value="${owner?.name||''}" disabled></div>
       <div><div class="field-label">選配上限</div><input type="text" value="NT$${fmt(owner?.upper_limit||0)}" disabled></div>
     </div>
+
+    <!-- 不參與權變勾選 -->
+    <div class="mb-12" style="background:var(--orange-bg);border:0.5px solid var(--orange);border-radius:var(--rm);padding:10px 14px;">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="sel-nonpart" ${isNonpart?'checked':''} onchange="toggleNonpart(this,'${ownerId}')"
+          style="width:16px;height:16px;cursor:pointer;">
+        <span style="font-size:13px;font-weight:500;color:var(--orange-text);">不參與權變（勾選後戶別車位欄位停用，退還更新前土地價值）</span>
+      </label>
+    </div>
+
+    <div id="sel-fields">
     <div class="grid-2 mb-12">
       <div>
         <div class="field-label">通訊電話</div>
@@ -994,14 +1006,34 @@ function openSelectionModal(ownerId) {
       <div class="field-label">備註</div>
       <textarea id="sel-reason" rows="2" placeholder="例：地主現場到訪選定 / 電話確認改選原因"></textarea>
     </div>
+    </div><!-- end sel-fields -->
+
     <div id="sel-validation" style="margin-bottom:10px;"></div>
     <div class="flex gap-8">
       <button class="btn-secondary flex-1" onclick="previewSelection('${ownerId}')"><i class="ti ti-calculator"></i> 試算</button>
-      <button class="btn-secondary flex-1" onclick="submitSelection('${ownerId}','draft')">存草稿</button>
-      <button class="btn-success flex-1" onclick="submitSelection('${ownerId}','confirmed')"><i class="ti ti-check"></i> 正式登錄</button>
+      <button class="btn-secondary flex-1" id="btn-draft" onclick="submitSelection('${ownerId}','draft')">存草稿</button>
+      <button class="btn-success flex-1" id="btn-confirm" onclick="submitSelection('${ownerId}','confirmed')"><i class="ti ti-check"></i> 正式登錄</button>
     </div>
   `;
+
+  // 若已是不參與，立即停用欄位
+  if (isNonpart) toggleNonpart(document.getElementById('sel-nonpart'), ownerId);
   openModal();
+}
+
+function toggleNonpart(checkbox, ownerId) {
+  const fields = document.getElementById('sel-fields');
+  const inputs = fields ? fields.querySelectorAll('input, textarea') : [];
+  if (checkbox.checked) {
+    inputs.forEach(el => { el.disabled = true; el.style.opacity = '0.4'; });
+    document.getElementById('sel-validation').innerHTML =
+      `<div style="background:var(--orange-bg);color:var(--orange-text);padding:8px 12px;border-radius:6px;font-size:12px;">
+        <i class="ti ti-alert-circle"></i> 不參與權變：退還更新前土地權利價值，不需填寫選配戶別
+      </div>`;
+  } else {
+    inputs.forEach(el => { el.disabled = false; el.style.opacity = '1'; });
+    document.getElementById('sel-validation').innerHTML = '';
+  }
 }
 
 function previewSelection(ownerId) {
@@ -1075,6 +1107,25 @@ function previewSelection(ownerId) {
 }
 
 async function submitSelection(ownerId, status) {
+  // ── 不參與權變 ──
+  const nonpartChk = document.getElementById('sel-nonpart');
+  if (nonpartChk && nonpartChk.checked) {
+    const btn = document.getElementById('btn-confirm') || document.querySelector('#modal-box .btn-success');
+    if (btn) { btn.disabled = true; btn.textContent = '處理中…'; }
+    try {
+      await apiPost('saveOwner', { owner_id: ownerId, participate: 'false', change_reason: '不參與權變' });
+      await loadOwners();
+      renderOwnerList();
+      renderOwnerDetail(ownerId);
+      closeModal();
+      alert('已標記為不參與權變');
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = '正式登錄'; }
+      alert('失敗：' + e.message);
+    }
+    return;
+  }
+
   const units  = expandCodeList(document.getElementById('sel-units').value);
   const parks  = expandCodeList(document.getElementById('sel-parks').value);
   const date   = document.getElementById('sel-date').value;
@@ -2314,8 +2365,25 @@ async function loadSettle() {
     const sels   = STATE.selections.filter(s => s.status !== 'deleted');
     const mergeGroups = MERGE_STATE.groups || [];
 
-    // 計算每個地主的找補
-    const ownerList = owners.filter(o => o.participate !== 'false' && o.participate !== false).map(o => {
+    // 計算每個地主的找補（含不參與）
+    const ownerList = owners.map(o => {
+      const isNp = (o.participate === 'false' || o.participate === false);
+      const isPost = (o.participate === 'post');
+
+      // 不參與（領更新前價值）：退還 pre_renewal_value
+      if (isNp) {
+        const preVal = Number(o.pre_renewal_value) || 0;
+        return {
+          owner_id: o.owner_id,
+          serial_no: o.serial_no,
+          name: o.name,
+          is_nonpart: true,
+          personal_settlement: -preVal,  // 負數=退還
+          merge_settlement: 0,
+          total_settlement: -preVal,
+        };
+      }
+
       const sel = sels.find(s => s.owner_id == o.owner_id);
       const ps  = sel ? (Number(sel.settlement)||0) : 0;
 
@@ -2335,6 +2403,7 @@ async function loadSettle() {
         owner_id: o.owner_id,
         serial_no: o.serial_no,
         name: o.name,
+        is_nonpart: false,
         personal_settlement: ps,
         merge_settlement: Math.round(ms),
         total_settlement: ps + Math.round(ms),
