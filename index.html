@@ -1644,7 +1644,7 @@ async function doExport() {
 //  NAVIGATION
 // ============================================================
 function navTo(view) {
-  ['list','merge','lottery','calls','contacts','announce','settle','settings'].forEach(v => {
+  ['list','merge','lottery','draw','calls','contacts','announce','settle','settings'].forEach(v => {
     const el = document.getElementById('view-'+v);
     if (el) el.style.display = v === view ? '' : 'none';
     const nav = document.getElementById('nav-'+v);
