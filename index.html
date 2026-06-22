@@ -2365,49 +2365,49 @@ async function loadSettle() {
     const sels   = STATE.selections.filter(s => s.status !== 'deleted');
     const mergeGroups = MERGE_STATE.groups || [];
 
-    // 計算每個地主的找補（含不參與）
-    const ownerList = owners.map(o => {
-      const isNp = (o.participate === 'false' || o.participate === false);
-      const isPost = (o.participate === 'post');
+    // 計算每個地主的找補
+    const ownerList = [];
+    owners.forEach(o => {
+      const isNp   = (o.participate === 'false' || o.participate === false);
+      const sel    = sels.find(s => s.owner_id == o.owner_id);
 
-      // 不參與（領更新前價值）：退還 pre_renewal_value
+      // 不參與（明確標記 false）：退還更新前土地價值
       if (isNp) {
         const preVal = Number(o.pre_renewal_value) || 0;
-        return {
-          owner_id: o.owner_id,
-          serial_no: o.serial_no,
-          name: o.name,
-          is_nonpart: true,
-          personal_settlement: -preVal,  // 負數=退還
-          merge_settlement: 0,
-          total_settlement: -preVal,
-        };
+        if (preVal > 0) {
+          ownerList.push({
+            owner_id: o.owner_id, serial_no: o.serial_no, name: o.name,
+            is_nonpart: true,
+            personal_settlement: -preVal,
+            merge_settlement: 0,
+            total_settlement: -preVal,
+          });
+        }
+        return;
       }
 
-      const sel = sels.find(s => s.owner_id == o.owner_id);
-      const ps  = sel ? (Number(sel.settlement)||0) : 0;
+      // 未選配：不列入
+      if (!sel) return;
 
-      // 合併找補：找這個地主所在的合併組
+      const ps = Number(sel.settlement) || 0;
+
+      // 合併找補
       let ms = 0;
       mergeGroups.forEach(g => {
         const ids = Array.isArray(g.owner_ids) ? g.owner_ids : JSON.parse(g.owner_ids||'[]');
         if (ids.includes(o.owner_id)) {
           const ratio = Number(g.merge_ratio) || (1 / ids.length);
-          const groupSel = Number(g.total_selected)||0;
-          const groupRights = Number(g.combined_rights)||0;
-          ms += (groupSel - groupRights) * ratio;
+          ms += (Number(g.total_selected)||0 - Number(g.combined_rights)||0) * ratio;
         }
       });
 
-      return {
-        owner_id: o.owner_id,
-        serial_no: o.serial_no,
-        name: o.name,
+      ownerList.push({
+        owner_id: o.owner_id, serial_no: o.serial_no, name: o.name,
         is_nonpart: false,
         personal_settlement: ps,
         merge_settlement: Math.round(ms),
         total_settlement: ps + Math.round(ms),
-      };
+      });
     });
 
     renderSettle({ owners: ownerList, summary: {} });
@@ -2421,19 +2421,20 @@ function renderSettle(data) {
   const owners = (data.owners || []).sort((a,b) => String(a.serial_no).padStart(8,'0').localeCompare(String(b.serial_no).padStart(8,'0')));
   const sum = data.summary || {};
 
-  // 全案加總
-  const totalPayCount    = owners.filter(o => o.total_settlement > 0).length;
-  const totalRefundCount = owners.filter(o => o.total_settlement < 0).length;
-  const evenCount        = owners.filter(o => o.total_settlement === 0 && (o.personal_settlement !== 0 || o.merge_settlement !== 0)).length;
-  const totalPayAmt      = owners.filter(o => o.total_settlement > 0).reduce((s,o) => s + o.total_settlement, 0);
-  const totalRefundAmt   = owners.filter(o => o.total_settlement < 0).reduce((s,o) => s + Math.abs(o.total_settlement), 0);
+  // 只算有找補的地主（有選配或不參與）
+  const activeOwners = owners.filter(o => o.total_settlement !== 0 || o.is_nonpart);
+  const totalPayCount    = activeOwners.filter(o => o.total_settlement > 0).length;
+  const totalRefundCount = activeOwners.filter(o => o.total_settlement < 0).length;
+  const evenCount        = activeOwners.filter(o => o.total_settlement === 0).length;
+  const totalPayAmt      = activeOwners.filter(o => o.total_settlement > 0).reduce((s,o) => s + o.total_settlement, 0);
+  const totalRefundAmt   = activeOwners.filter(o => o.total_settlement < 0).reduce((s,o) => s + Math.abs(o.total_settlement), 0);
   const netAmt           = totalPayAmt - totalRefundAmt;
 
   const rows = owners.map(o => {
     const ps = Number(o.personal_settlement)||0;
     const ms = Number(o.merge_settlement)||0;
     const ts = Number(o.total_settlement)||0;
-    if (ps === 0 && ms === 0) return ''; // 無選配不顯示
+    if (ps === 0 && ms === 0 && !o.is_nonpart) return ''; // 無選配且非不參與不顯示
     const settleColor = ts > 0 ? 'var(--red-text)' : ts < 0 ? 'var(--green-text)' : 'var(--tt)';
     const settleLabel = ts > 0 ? `補差 NT$${fmt(ts)}` : ts < 0 ? `退款 NT$${fmt(-ts)}` : '無找補';
     return `<div style="display:grid;grid-template-columns:56px 1fr 130px 130px 150px;
@@ -2450,21 +2451,21 @@ function renderSettle(data) {
     <!-- 全案加總 -->
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
       <div class="stat-card">
-        <div class="stat-n" style="color:var(--red-text);">NT$${fmt(sum.total_pay||0)}</div>
+        <div class="stat-n" style="color:${totalPayAmt>0?'var(--red-text)':'var(--tt)'};">NT$${fmt(totalPayAmt)}</div>
         <div class="stat-l">補差總額</div>
         <div class="text-xs text-muted">${totalPayCount} 人需補繳</div>
       </div>
       <div class="stat-card">
-        <div class="stat-n" style="color:var(--green-text);">NT$${fmt(sum.total_refund||0)}</div>
+        <div class="stat-n" style="color:${totalRefundAmt>0?'var(--green-text)':'var(--tt)'};">NT$${fmt(totalRefundAmt)}</div>
         <div class="stat-l">退款總額</div>
         <div class="text-xs text-muted">${totalRefundCount} 人可退款</div>
       </div>
       <div class="stat-card">
-        <div class="stat-n" style="color:${(sum.net||0)>0?'var(--red-text)':(sum.net||0)<0?'var(--green-text)':'var(--tt)'};">
-          ${(sum.net||0)>0?'▲':''}${(sum.net||0)<0?'▼':''} NT$${fmt(Math.abs(sum.net||0))}</div>
+        <div class="stat-n" style="color:${netAmt>0?'var(--red-text)':netAmt<0?'var(--green-text)':'var(--tt)'};">
+          ${netAmt>0?'▲':''}${netAmt<0?'▼':''} NT$${fmt(Math.abs(netAmt))}</div>
         <div class="stat-l">淨額</div>
-        <div style="font-size:11px;font-weight:600;color:${(sum.net||0)>0?'var(--red-text)':(sum.net||0)<0?'var(--green-text)':'var(--tt)'};">
-          ${(sum.net||0)>0?'→ 整體需補差':(sum.net||0)<0?'→ 整體需退款':'持平'}</div>
+        <div style="font-size:11px;font-weight:600;color:${netAmt>0?'var(--red-text)':netAmt<0?'var(--green-text)':'var(--tt)'};">
+          ${netAmt>0?'→ 整體需補差':netAmt<0?'→ 整體需退款':'持平'}</div>
       </div>
     </div>
 
