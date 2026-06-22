@@ -2383,8 +2383,17 @@ async function deleteMerge(groupId) {
 //  SIDEBAR STATS
 // ============================================================
 function updateSidebar() {
-  const sels  = STATE.selections.filter(s => s.status !== 'deleted');
-  // 重複：用選配記錄找出重複的戶別/車位，再計算涉及的地主數
+  const allSels = STATE.selections.filter(s => s.status !== 'deleted');
+
+  // 每個地主只取最新一筆
+  const latestByOwner = {};
+  allSels.forEach(s => {
+    const existing = latestByOwner[s.owner_id];
+    if (!existing || s.modified_at > existing.modified_at) latestByOwner[s.owner_id] = s;
+  });
+  const sels = Object.values(latestByOwner);
+
+  // 重複：用最新選配找重複的戶別/車位
   const _uCount = {}, _pCount = {};
   sels.forEach(s => {
     const us = Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos||'[]');
@@ -2395,8 +2404,8 @@ function updateSidebar() {
   const dupOwnerSet = new Set();
   Object.values(_uCount).filter(ids => ids.size >= 2).forEach(ids => ids.forEach(id => dupOwnerSet.add(id)));
   Object.values(_pCount).filter(ids => ids.size >= 2).forEach(ids => ids.forEach(id => dupOwnerSet.add(id)));
-  // 只算系統內存在的地主
   const dups = [...dupOwnerSet].filter(id => STATE.owners.find(o => o.owner_id == id)).length;
+
   const done  = sels.filter(s => s.status === 'confirmed').length;
   const total = STATE.owners.length;
   document.getElementById('sb-done').textContent  = `${done} / ${total}`;
@@ -2834,7 +2843,17 @@ async function loadLotteryList() {
     await loadSelections();
   }
 
-  const sels = STATE.selections.filter(s => s.status !== 'deleted');
+  const allSels = STATE.selections.filter(s => s.status !== 'deleted');
+
+  // 每個地主只取最新一筆（避免同一地主多筆記錄干擾）
+  const latestByOwner = {};
+  allSels.forEach(s => {
+    const existing = latestByOwner[s.owner_id];
+    if (!existing || s.modified_at > existing.modified_at) {
+      latestByOwner[s.owner_id] = s;
+    }
+  });
+  const sels = Object.values(latestByOwner);
 
   // 找出有重複的戶別
   const unitCount = {}, parkCount = {};
