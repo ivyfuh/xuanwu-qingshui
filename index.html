@@ -144,6 +144,7 @@ tr.selected td{background:#EDF5FB;}
       <div class="nav-item active" id="nav-list" onclick="navTo('list')"><i class="ti ti-clipboard-list"></i>地主清單</div>
       <div class="nav-item" id="nav-merge" onclick="navTo('merge')"><i class="ti ti-users"></i>合併管理</div>
       <div class="nav-item" id="nav-lottery" onclick="navTo('lottery')"><i class="ti ti-chart-pie"></i>選屋總覽</div>
+      <div class="nav-item" id="nav-draw" onclick="navTo('draw')"><i class="ti ti-dice"></i>抽籤管理</div>
       <div class="nav-item" id="nav-calls" onclick="navTo('calls')"><i class="ti ti-phone"></i>電話記錄</div>
       <div class="nav-item" id="nav-contacts" onclick="navTo('contacts')"><i class="ti ti-address-book"></i>通訊錄</div>
       <div class="nav-item" id="nav-announce" onclick="navTo('announce')"><i class="ti ti-speakerphone"></i>公告管理</div>
@@ -152,6 +153,7 @@ tr.selected td{background:#EDF5FB;}
       <div class="nav-item" id="nav-export" onclick="doExport()"><i class="ti ti-table-export"></i>匯出選配結果</div>
       <div style="flex:1;"></div>
       <div style="border-top:0.5px solid var(--bt);padding:6px 6px 0;">
+        <a class="nav-item" href="https://ivyfuh.github.io/xuanwu-qingshui/public.html" target="_blank" style="color:var(--brand-text);text-decoration:none;"><i class="ti ti-external-link"></i>開啟前台</a>
         <div class="nav-item" id="nav-settings" onclick="navTo('settings')"><i class="ti ti-settings"></i>案件設定</div>
       </div>
     </div>
@@ -173,6 +175,7 @@ tr.selected td{background:#EDF5FB;}
           <button class="btn-secondary text-sm" id="f-selected" onclick="setFilter('selected')" style="color:var(--green-text);">已完成選屋</button>
           <button class="btn-secondary text-sm" id="f-unselected" onclick="setFilter('unselected')" style="color:#0C447C;">尚未選屋</button>
           <button class="btn-secondary text-sm" id="f-incomplete" onclick="setFilter('incomplete')" style="color:var(--red-text);">收件未齊</button>
+          <button class="btn-secondary text-sm" id="f-nodoc" onclick="setFilter('nodoc')" style="color:var(--orange-text);">未歸檔</button>
           <button class="btn-secondary text-sm" id="f-nonparticipate" onclick="setFilter('nonparticipate')" style="color:var(--tt);">不參與權變</button>
           <button class="btn-secondary text-sm" id="f-dup" onclick="setFilter('dup')" style="color:var(--red-text);">重複</button>
           <button class="btn-secondary text-sm" id="f-over" onclick="setFilter('over')" style="color:var(--orange-text);">超選</button>
@@ -191,12 +194,13 @@ tr.selected td{background:#EDF5FB;}
         <!-- Table -->
         <div class="card" style="padding:0;overflow:hidden;">
           <!-- Table header -->
-          <div style="display:grid;grid-template-columns:56px 1fr 80px 88px 28px;
+          <div style="display:grid;grid-template-columns:56px 1fr 80px 52px 52px 28px;
             padding:7px 14px;background:var(--cs);gap:8px;border-bottom:0.5px solid var(--bt);">
             <span class="text-xs text-muted font-medium">編號</span>
             <span class="text-xs text-muted font-medium">地主</span>
             <span class="text-xs text-muted font-medium">選屋</span>
-            <span class="text-xs text-muted font-medium">收件</span>
+            <span class="text-xs text-muted font-medium" style="text-align:center;display:block;">紙本</span>
+          <span class="text-xs text-muted font-medium" style="text-align:center;display:block;">歸檔</span>
             <span></span>
           </div>
           <div id="owner-rows"></div>
@@ -258,6 +262,17 @@ tr.selected td{background:#EDF5FB;}
       </div>
 
       <!-- ===== OTHER VIEWS placeholder ===== -->
+      <!-- ===== DRAW VIEW ===== -->
+      <div id="view-draw" style="display:none;">
+        <div class="flex items-center justify-between mb-16">
+          <h2 style="font-size:16px;font-weight:500;"><i class="ti ti-dice"></i> 抽籤管理</h2>
+          <button class="btn-secondary" onclick="loadLotteryList()"><i class="ti ti-refresh"></i> 重新整理</button>
+        </div>
+        <div id="lottery-content">
+          <div style="text-align:center;color:var(--tt);padding:40px;">載入中…</div>
+        </div>
+      </div>
+
       <div id="view-merge" style="display:none;">
         <div class="flex items-center justify-between mb-12">
           <h2 style="font-size:16px;font-weight:500;">合併選配管理</h2>
@@ -277,16 +292,6 @@ tr.selected td{background:#EDF5FB;}
           <div style="text-align:center;color:var(--tt);padding:40px;">載入中…</div>
         </div>
 
-        <!-- 抽籤管理 -->
-        <div style="margin-top:24px;">
-          <div class="flex items-center justify-between mb-12">
-            <h3 style="font-size:14px;font-weight:500;"><i class="ti ti-dice"></i> 抽籤管理</h3>
-            <button class="btn-secondary" onclick="loadLotteryList()"><i class="ti ti-refresh"></i> 重新整理</button>
-          </div>
-          <div id="lottery-content">
-            <div style="text-align:center;color:var(--tt);padding:20px;">載入中…</div>
-          </div>
-        </div>
       </div>
       <div id="view-settle" style="display:none;">
         <div class="flex items-center justify-between mb-16">
@@ -580,7 +585,28 @@ function renderOwnerList() {
     if (f === 'selected'    && (!sel || sel.status==='draft' || nonpart)) return false;
     if (f === 'unselected'  && (sel && !nonpart ? sel.status!=='draft' : false) ) { /* keep drafts/none */ }
     if (f === 'unselected'  && (nonpart || (sel && sel.status==='confirmed'))) return false;
-    if (f === 'incomplete'  && prog.done === prog.total) return false;
+    if (f === 'incomplete') {
+      // 只要有一項紙本未收到就篩出來（需已選屋）
+      const s = getSelForOwner(o.owner_id);
+      const np = (o.participate==='false'||o.participate===false||o.participate==='post');
+      if (!s || np) return false;
+      const has = STATE.docStatus[o.owner_id] || {};
+      const required = requiredDocsFor(o);
+      const allPhys = required.every(dt => {
+        const v = has[dt.key];
+        if (!v) return false;
+        if (v === true) return true;
+        return v.physical || v.uploaded;
+      });
+      if (allPhys) return false;
+    }
+    if (f === 'nodoc') {
+      const s = getSelForOwner(o.owner_id);
+      const np = (o.participate==='false'||o.participate===false||o.participate==='post');
+      if (!s || np) return false;  // 未選屋不算
+      if (prog.done >= prog.total) return false;  // 已歸檔完成不顯示
+      return true;
+    }
     if (f === 'nonparticipate' && !nonpart) return false;
     if (f === 'dup')  { if (!sel || !checkDuplicate(sel)) return false; }
     if (f === 'over') { if (!sel || !sel.is_over_limit) return false; }
@@ -615,12 +641,33 @@ function renderOwnerList() {
     const st  = ownerStatus(o, sel);
     const isActive = STATE.selected_owner_id == o.owner_id;
     const prog = ownerDocProgress(o.owner_id);
-    const docOk = prog.done === prog.total;
-    // 只有已選屋（有 sel）且非不參與才顯示收件狀態
     const hasSelection = sel && !nonpart;
-    const docBadge = !hasSelection ? '' : docOk
-      ? `<span class="badge badge-ok" style="font-size:10px;">收件齊全</span>`
-      : `<span class="badge badge-dup" style="font-size:10px;" title="缺：${prog.missing.join('、')}">缺 ${prog.missing.slice(0,2).join('、')}${prog.missing.length>2?'…':''}</span>`;
+    // 紙本：physical=true 或 uploaded=true 的數量
+    const physDone = hasSelection ? (() => {
+      const has = STATE.docStatus[o.owner_id] || {};
+      const required = requiredDocsFor(o);
+      return required.filter(dt => {
+        const v = has[dt.key];
+        if (!v) return false;
+        if (v === true) return true;
+        return v.physical || v.uploaded;
+      }).length;
+    })() : 0;
+    // 歸檔：uploaded=true 的數量
+    const archDone = prog.done;
+    const totalDocs = prog.total;
+    // 紙本 badge
+    const physBadge = !hasSelection ? '' : physDone >= totalDocs
+      ? `<div style="text-align:center;"><i class="ti ti-circle-check-filled" style="color:var(--green);font-size:15px;"></i></div>`
+      : physDone > 0
+        ? `<div style="text-align:center;font-size:10px;color:var(--brand-text);font-weight:500;">${physDone}/${totalDocs}</div>`
+        : `<div style="text-align:center;font-size:10px;color:var(--red-text);">—</div>`;
+    // 歸檔 badge
+    const archBadge = !hasSelection ? '' : archDone >= totalDocs
+      ? `<div style="text-align:center;"><i class="ti ti-circle-check-filled" style="color:var(--green);font-size:15px;"></i></div>`
+      : archDone > 0
+        ? `<div style="text-align:center;font-size:10px;color:var(--brand-text);font-weight:500;">${archDone}/${totalDocs}</div>`
+        : `<div style="text-align:center;font-size:10px;color:var(--red-text);">—</div>`;
 
     // 選屋結果列：顯示戶別車位，重複的用紅字 + 標出與誰重複
     let selLine = '';
@@ -648,7 +695,7 @@ function renderOwnerList() {
       ? `<span class="badge" style="background:var(--cs);color:var(--tt);">${o.participate==='post'?'不參與(後)':'不參與(前)'}</span>`
       : `<span class="badge ${stMap[st]||''}">${stLabel[st]||st}</span>`;
 
-    return `<div style="display:grid;grid-template-columns:56px 1fr 80px 88px 28px;
+    return `<div style="display:grid;grid-template-columns:56px 1fr 80px 52px 52px 28px;
       align-items:start;padding:10px 14px;border-bottom:0.5px solid var(--bt);
       cursor:pointer;gap:8px;${isActive?'background:#EDF5FB;':''}"
       onclick="selectOwner('${o.owner_id}')" class="owner-row">
@@ -658,14 +705,15 @@ function renderOwnerList() {
         ${selLine}
       </div>
       <div style="padding-top:2px;">${statusBadge}</div>
-      <div style="padding-top:2px;">${docBadge}</div>
+      <div>${physBadge}</div>
+      <div>${archBadge}</div>
       <div style="padding-top:2px;"><i class="ti ti-chevron-right" style="color:var(--tt);"></i></div>
     </div>`;
   }).join('');
 
   // 篩選結果人數
   const filterLabels = { '':'全部', selected:'已完成選屋', unselected:'尚未選屋',
-    incomplete:'收件未齊', nonparticipate:'不參與權變', dup:'重複', over:'超選', draft:'草稿' };
+    incomplete:'收件未齊', nodoc:'未歸檔', nonparticipate:'不參與權變', dup:'重複', over:'超選', draft:'草稿' };
   const countBar = `<div style="padding:8px 14px;background:var(--cs);border-bottom:0.5px solid var(--bt);
     font-size:12px;color:var(--ts);">${filterLabels[f]||'全部'}：共 <b style="color:var(--tp);">${list.length}</b> 人</div>`;
 
@@ -1515,6 +1563,7 @@ function navTo(view) {
   if (view === 'merge') loadMergeGroups();
   if (view === 'lottery') loadDashboard();
   if (view === 'settle') loadSettle();
+  if (view === 'draw') loadLotteryList();
 }
 
 // ============================================================
@@ -2307,6 +2356,9 @@ function renderSettle(data) {
   const totalPayCount    = owners.filter(o => o.total_settlement > 0).length;
   const totalRefundCount = owners.filter(o => o.total_settlement < 0).length;
   const evenCount        = owners.filter(o => o.total_settlement === 0 && (o.personal_settlement !== 0 || o.merge_settlement !== 0)).length;
+  const totalPayAmt      = owners.filter(o => o.total_settlement > 0).reduce((s,o) => s + o.total_settlement, 0);
+  const totalRefundAmt   = owners.filter(o => o.total_settlement < 0).reduce((s,o) => s + Math.abs(o.total_settlement), 0);
+  const netAmt           = totalPayAmt - totalRefundAmt;
 
   const rows = owners.map(o => {
     const ps = Number(o.personal_settlement)||0;
@@ -2369,7 +2421,6 @@ async function loadDashboard() {
   } catch(e) {
     el.innerHTML = `<div style="color:var(--red-text);padding:20px;">載入失敗：${e.message}</div>`;
   }
-  loadLotteryList();
 }
 
 function renderDashboard(unitMap, parkMap) {
@@ -2407,46 +2458,49 @@ function renderDashboard(unitMap, parkMap) {
     if (!k.includes('-S') && !selectedUnits.has(k)) remSqp += Number(u.area_sqp||0);
   });
 
-  // 剩餘戶型分布（依 unit_type 分組）
-  const typeCount = {};
-  Object.entries(unitMap).forEach(([k, u]) => {
-    if (k.includes('-S')) return;
-    if (selectedUnits.has(k)) return;
-    const t = u.unit_type || '其他';
-    typeCount[t] = (typeCount[t]||0) + 1;
+  // 剩餘戶型分布（依四種房型分組）
+  const ROOM_TYPES = [
+    { name: '2房1衛 IH',  codes: ['A8','A9','B8','B9'],                     color: '#748B97' },
+    { name: '2房2衛 IH',  codes: ['A1','A5','A6','B1','B5','B6'],            color: '#A8C4D0' },
+    { name: '3房2衛 IH',  codes: ['B2','B3'],                                color: '#7FA8B8' },
+    { name: '3房2衛 瓦斯', codes: ['A2','A3','A7','B7'],                      color: '#C5D5DC' },
+  ];
+  const roomCounts = ROOM_TYPES.map(rt => {
+    const count = Object.entries(unitMap).filter(([k, u]) => {
+      if (k.includes('-S')) return false;
+      if (selectedUnits.has(k)) return false;
+      const t = u.unit_type || k.replace(/^\d+F-/, '');
+      return rt.codes.includes(t);
+    }).length;
+    return { ...rt, count };
   });
-  const typeTotal = Object.values(typeCount).reduce((s,n) => s+n, 0);
-  const typeEntries = Object.entries(typeCount).sort((a,b) => b[1]-a[1]);
+  const typeTotal = roomCounts.reduce((s, r) => s + r.count, 0);
 
-  // 圓餅圖顏色
-  const pieColors = ['#748B97','#9FA0A0','#A8C4D0','#D8D3C9','#B5C9D1','#7FA8B8','#C5D5DC','#E2E8EC'];
-
-  // SVG 圓餅圖
+  // SVG 圓餅圖（四種房型）
   let pieSvg = '';
   if (typeTotal > 0) {
     let startAngle = -Math.PI / 2;
     const cx = 80, cy = 80, r = 70;
-    const slices = typeEntries.map(([type, count], i) => {
-      const angle = (count / typeTotal) * 2 * Math.PI;
+    const slices = roomCounts.filter(rt => rt.count > 0).map(rt => {
+      const angle = (rt.count / typeTotal) * 2 * Math.PI;
       const x1 = cx + r * Math.cos(startAngle);
       const y1 = cy + r * Math.sin(startAngle);
       startAngle += angle;
       const x2 = cx + r * Math.cos(startAngle);
       const y2 = cy + r * Math.sin(startAngle);
       const large = angle > Math.PI ? 1 : 0;
-      const color = pieColors[i % pieColors.length];
       const path = `M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`;
-      return `<path d="${path}" fill="${color}" stroke="var(--cp)" stroke-width="1.5"/>`;
+      return `<path d="${path}" fill="${rt.color}" stroke="var(--cp)" stroke-width="1.5"/>`;
     }).join('');
     pieSvg = `<svg width="160" height="160" viewBox="0 0 160 160">${slices}</svg>`;
   }
 
   // 圖例
-  const legend = typeEntries.map(([type, count], i) => {
-    const pct = typeTotal > 0 ? Math.round(count/typeTotal*100) : 0;
+  const legend = roomCounts.filter(rt => rt.count > 0).map(rt => {
+    const pct = typeTotal > 0 ? Math.round(rt.count/typeTotal*100) : 0;
     return `<div class="flex items-center gap-6" style="margin-bottom:6px;">
-      <div style="width:10px;height:10px;border-radius:2px;flex-shrink:0;background:${pieColors[i%pieColors.length]};"></div>
-      <span style="font-size:12px;">${type}</span>
+      <div style="width:10px;height:10px;border-radius:2px;flex-shrink:0;background:${rt.color};"></div>
+      <span style="font-size:12px;">${rt.name}</span>
       <span class="text-muted text-xs">${count}戶 ${pct}%</span>
     </div>`;
   }).join('');
@@ -2587,12 +2641,12 @@ function renderDashboard(unitMap, parkMap) {
       ${typeTotal > 0 ? `
       <!-- 按房型分組 -->
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px;">
-        ${roomGroups.map(([room, info]) => {
-          const pct = typeTotal > 0 ? Math.round(info.count / typeTotal * 100) : 0;
-          return `<div style="background:var(--brand-light);border-radius:var(--rm);padding:10px 12px;">
-            <div style="font-size:12px;font-weight:500;color:var(--brand-text);margin-bottom:4px;">${room}</div>
-            <div style="font-size:20px;font-weight:500;color:var(--tp);">${info.count}<span style="font-size:12px;font-weight:400;color:var(--ts);"> 戶</span></div>
-            <div style="font-size:10px;color:var(--tt);">佔剩餘 ${pct}%・${info.types.join('、')}</div>
+        ${roomCounts.filter(rt => rt.count > 0).map(rt => {
+          const pct = typeTotal > 0 ? Math.round(rt.count / typeTotal * 100) : 0;
+          return `<div style="background:${rt.color}22;border-left:3px solid ${rt.color};border-radius:var(--rm);padding:10px 12px;">
+            <div style="font-size:12px;font-weight:500;color:var(--brand-text);margin-bottom:4px;">${rt.name}</div>
+            <div style="font-size:20px;font-weight:500;color:var(--tp);">${rt.count}<span style="font-size:12px;font-weight:400;color:var(--ts);"> 戶</span></div>
+            <div style="font-size:10px;color:var(--tt);">佔剩餘 ${pct}%</div>
           </div>`;
         }).join('')}
       </div>
