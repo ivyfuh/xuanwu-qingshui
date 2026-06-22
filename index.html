@@ -419,9 +419,29 @@ async function apiPost(action, body = {}) {
 // ============================================================
 //  DATA LOADING
 // ============================================================
+
+// 全域快取 — 啟動時一次載入，之後不再呼叫 API
+window.CACHE = { units: null, parking: null };
+
+async function preloadUnitParking() {
+  if (window.CACHE.units && window.CACHE.parking) return;
+  const [u, p] = await Promise.all([apiGet('getUnits'), apiGet('getParking')]);
+  window.CACHE.units   = u || {};
+  window.CACHE.parking = p || {};
+  window.DASHBOARD_UNIT_MAP = window.CACHE.units;  // 供儀表板用
+  MERGE_STATE.unitMap  = window.CACHE.units;
+  MERGE_STATE.parkMap  = window.CACHE.parking;
+}
+
 async function loadAll() {
   await loadCaseConfig();
-  await Promise.all([loadOwners(), loadSelections(), loadDocStatus()]);
+  // 同時發出所有請求，不等待戶別車位（背景載入）
+  await Promise.all([
+    loadOwners(),
+    loadSelections(),
+    loadDocStatus(),
+    preloadUnitParking(),   // ← 新增，背景預載
+  ]);
   renderOwnerList();
   updateSidebar();
 }
@@ -883,13 +903,8 @@ function openSelectionModal(ownerId) {
   const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
   const parkNos = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
 
-  // 預先載入戶別車位資料（供超選擋關用）
-  if (!window.DASHBOARD_UNIT_MAP) {
-    apiGet('getUnits').then(d => { if (d) window.DASHBOARD_UNIT_MAP = d; });
-  }
-  if (!MERGE_STATE.parkMap) {
-    apiGet('getParking').then(d => { if (d) MERGE_STATE.parkMap = d; });
-  }
+  // 預先載入戶別車位資料（快取未命中才呼叫）
+  if (!window.CACHE?.units) preloadUnitParking();
 
   document.getElementById('modal-title').textContent = (sel ? '改選' : '新增選配') + ' — ' + (owner?.name||'');
   document.getElementById('modal-body').innerHTML = `
@@ -952,11 +967,23 @@ function previewSelection(ownerId) {
   const carWarnHtml = parks.length > units.length
     ? `<div style="background:var(--red-bg);color:var(--red-text);padding:6px 10px;border-radius:6px;font-size:12px;margin-bottom:6px;"><i class="ti ti-alert-circle"></i> 車位數（${parks.length}）超過戶別數（${units.length}），不符「一戶一車」規定</div>` : '';
 
-  // Simple validation + calc
+  // Simple validation + calc（全部用快取，不呼叫 API）
   let total = 0;
-  document.getElementById('sel-validation').innerHTML = carWarnHtml + '<div class="text-xs text-muted">試算中…</div>';
-  apiGet('getUnits').then(unitMap => {
-    apiGet('getParking').then(parkMap => {
+  const unitMap = window.CACHE?.units || window.DASHBOARD_UNIT_MAP || {};
+  const parkMap = window.CACHE?.parking || MERGE_STATE?.parkMap || {};
+  const hasCached = Object.keys(unitMap).length > 0;
+
+  if (!hasCached) {
+    // 快取還沒好，顯示載入中並等待
+    document.getElementById('sel-validation').innerHTML = carWarnHtml + '<div class="text-xs text-muted">載入中…</div>';
+    preloadUnitParking().then(() => previewSelection(ownerId));
+    return;
+  }
+
+  document.getElementById('sel-validation').innerHTML = carWarnHtml + '<div class="text-xs text-muted">計算中…</div>';
+
+  // 同步計算，不需 await
+  (() => {
       let errs = [];
       units.forEach(u => {
         if (!unitMap[u]) errs.push(`戶別 ${u} 不存在`);
@@ -993,8 +1020,7 @@ function previewSelection(ownerId) {
         btn.style.opacity = canSubmit ? '1' : '0.4';
         btn.style.cursor = canSubmit ? 'pointer' : 'not-allowed';
       });
-    });
-  });
+  })();
 }
 
 async function submitSelection(ownerId, status) {
