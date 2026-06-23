@@ -1304,8 +1304,7 @@ async function submitSelection(ownerId, status) {
     await Promise.all([loadOwners(), loadSelections()]);
     renderOwnerList();
     renderOwnerDetail(ownerId);
-    // 本次送出的戶別/車位若已有其他地主選擇，跳出重複提醒
-    notifyDuplicateSelection(ownerId, units, parks);
+    // #9：送單後不再跳重複提醒（打字當下 previewCodes 已即時標示，避免提示兩次）
   } catch(e) { btnReset(btn); alert('儲存失敗：' + e.message); }
 }
 
