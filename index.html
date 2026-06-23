@@ -57,7 +57,7 @@ button{cursor:pointer;border-radius:var(--rm);padding:6px 14px;border:none;font-
   display:flex;flex-direction:column;padding:8px 0;overflow-y:auto;flex-shrink:0;}
 #main{flex:1;overflow:auto;padding:20px;}
 #detail{display:none;width:300px;background:var(--cp);border-left:0.5px solid var(--bt);
-  overflow-y:auto;padding:16px;flex-shrink:0;position:sticky;top:0;height:100vh;}
+  overflow-y:auto;padding:16px;flex-shrink:0;align-self:stretch;}
 
 /* Sidebar */
 .nav-item{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:13px;
@@ -266,7 +266,7 @@ tr.selected td{background:#EDF5FB;}
       <div id="view-draw" style="display:none;">
         <div class="flex items-center justify-between mb-16">
           <h2 style="font-size:16px;font-weight:500;"><i class="ti ti-dice"></i> 抽籤管理</h2>
-          <button class="btn-secondary" onclick="loadLotteryList()"><i class="ti ti-refresh"></i> 重新整理</button>
+          <button class="btn-secondary" onclick="refreshLottery()"><i class="ti ti-refresh"></i> 重新整理</button>
         </div>
         <div id="lottery-content">
           <div style="text-align:center;color:var(--tt);padding:40px;">載入中…</div>
@@ -980,24 +980,7 @@ function renderDocChecklist(ownerId) {
        </div>` : '';
 
   return `<div style="margin-top:16px;border-top:0.5px solid var(--bt);padding-top:12px;">
-    <!-- 同意書狀態（不限選屋） -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;
-      background:${hasConsent?'var(--green-bg)':'var(--cs)'};border-radius:var(--rm);margin-bottom:10px;">
-      <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
-        <i class="ti ti-file-certificate" style="color:${hasConsent?'var(--green)':'var(--tt)'};font-size:15px;"></i>
-        <span>都更同意書</span>
-        ${hasConsent
-          ? `<span style="font-size:10px;color:var(--green-text);background:var(--green-bg);padding:0 6px;border-radius:4px;">已收</span>`
-          : `<span style="font-size:10px;color:var(--red-text);">未收</span>`}
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="checkbox"
-          ${hasConsent?'checked':''}
-          onchange="toggleConsent('${ownerId}', this.checked, this)"
-          style="width:15px;height:15px;cursor:pointer;">
-        <span style="font-size:11px;color:var(--tt);">勾選已收</span>
-      </label>
-    </div>
+    <!-- 同意書狀態改由下方「收件進度」的都更同意書（實體收到）認定，舊的勾選開關已移除 -->
 
     <div class="flex items-center justify-between mb-8">
       <span class="text-xs text-muted font-medium">收件進度</span>
@@ -1078,6 +1061,7 @@ async function editDocNote(ownerId, docType) {
 //  SELECTION MODAL
 // ============================================================
 function openSelectionModal(ownerId) {
+  window.SEL_EDIT_OWNER = ownerId;   // 即時重複偵測用：比對時排除地主本人
   const owner = STATE.owners.find(o => o.owner_id == ownerId);
   const sel   = getSelForOwner(ownerId);
   const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
@@ -1766,6 +1750,9 @@ async function doExport() {
 //  NAVIGATION
 // ============================================================
 function navTo(view) {
+  // 切換頁籤時自動收掉右側地主明細面板
+  const dp = document.getElementById('detail');
+  if (dp) dp.style.display = 'none';
   ['list','merge','lottery','draw','calls','contacts','announce','settle','settings'].forEach(v => {
     const el = document.getElementById('view-'+v);
     if (el) el.style.display = v === view ? '' : 'none';
@@ -2226,6 +2213,7 @@ function renderMergeList() {
 }
 
 function openMergeModal(groupId) {
+  window.SEL_EDIT_OWNER = null;   // 合併視窗不排除特定地主，重複一律比對全部
   const group = groupId ? MERGE_STATE.groups.find(g => g.group_id === groupId) : null;
   MERGE_STATE.editing = groupId || null;
   MERGE_STATE.memberSearch = '';
@@ -3023,6 +3011,14 @@ function renderDashboard(unitMap, parkMap) {
 // ============================================================
 //  抽籤管理
 // ============================================================
+// 「重新整理」按鈕：強制向後端重抓選配資料後再重畫
+async function refreshLottery() {
+  const el = document.getElementById('lottery-content');
+  if (el) el.innerHTML = '<div style="text-align:center;color:var(--tt);padding:40px;">重新整理中…</div>';
+  await loadSelections();
+  loadLotteryList();
+}
+
 async function loadLotteryList() {
   const el = document.getElementById('lottery-content');
   if (!el) return;
@@ -3287,15 +3283,45 @@ function expandCodeList(str) {
   return String(str||'').split(/[,，]/).map(s => expandCode(s)).filter(Boolean);
 }
 
-// 即時預覽：在指定元素顯示轉換結果
+// 取得其他地主已選的戶別/車位 → { code: [地主姓名, ...] }
+function takenByOthers(type, excludeOwnerId) {
+  const nameOf = {};
+  (STATE.owners || []).forEach(o => { nameOf[o.owner_id] = o.name || o.owner_id; });
+  const taken = {};
+  (STATE.selections || []).forEach(s => {
+    if (s.status === 'deleted') return;
+    if (excludeOwnerId != null && s.owner_id == excludeOwnerId) return;
+    const arr = type === 'parking'
+      ? (Array.isArray(s.parking_nos) ? s.parking_nos : JSON.parse(s.parking_nos || '[]'))
+      : (Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos || '[]'));
+    arr.forEach(c => { (taken[c] = taken[c] || []).push(nameOf[s.owner_id] || s.owner_id); });
+  });
+  return taken;
+}
+
+// 即時預覽：顯示轉換結果，並即時標示與其他地主重複的戶別/車位
 function previewCodes(inputId, previewId, type) {
   const val = document.getElementById(inputId).value;
   const codes = expandCodeList(val);
   const el = document.getElementById(previewId);
   if (!el) return;
   if (!codes.length) { el.innerHTML = ''; return; }
+  const taken = takenByOthers(type, window.SEL_EDIT_OWNER);
   const icon = type === 'parking' ? '🚗' : '🏠';
-  el.innerHTML = `<span class="text-muted">→ </span>${codes.map(c => `<span style="display:inline-block;background:var(--brand-bg);color:var(--brand-text);padding:1px 7px;border-radius:6px;margin:2px 3px 2px 0;font-size:12px;">${icon} ${c}</span>`).join('')}`;
+  let dupCount = 0;
+  const chips = codes.map(c => {
+    const others = taken[c];
+    if (others && others.length) {
+      dupCount++;
+      const who = [...new Set(others)].join('、');
+      return `<span title="與 ${who} 重複" style="display:inline-block;background:var(--red-bg);color:var(--red-text);padding:1px 7px;border-radius:6px;margin:2px 3px 2px 0;font-size:12px;">⚠ ${icon} ${c}</span>`;
+    }
+    return `<span style="display:inline-block;background:var(--brand-bg);color:var(--brand-text);padding:1px 7px;border-radius:6px;margin:2px 3px 2px 0;font-size:12px;">${icon} ${c}</span>`;
+  }).join('');
+  const warn = dupCount
+    ? `<div style="margin-top:4px;color:var(--red-text);font-size:11px;font-weight:500;"><i class="ti ti-alert-circle"></i> 已有 ${dupCount} 筆與其他地主重複，送單後此戶需抽籤</div>`
+    : '';
+  el.innerHTML = `<span class="text-muted">→ </span>${chips}${warn}`;
 }
 
 // ============================================================
