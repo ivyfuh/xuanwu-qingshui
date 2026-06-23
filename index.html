@@ -57,7 +57,7 @@ button{cursor:pointer;border-radius:var(--rm);padding:6px 14px;border:none;font-
   display:flex;flex-direction:column;padding:8px 0;overflow-y:auto;flex-shrink:0;}
 #main{flex:1;overflow:auto;padding:20px;}
 #detail{display:none;width:300px;background:var(--cp);border-left:0.5px solid var(--bt);
-  overflow-y:auto;padding:16px;flex-shrink:0;}
+  overflow-y:auto;padding:16px;flex-shrink:0;position:sticky;top:0;height:100vh;}
 
 /* Sidebar */
 .nav-item{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:13px;
@@ -362,9 +362,12 @@ const DOC_TYPES = [
 function requiredDocsFor(owner) {
   const hasAgent    = owner && (owner.has_agent === true || owner.has_agent === 'true');
   const participate = !owner || (owner.participate !== false && owner.participate !== 'false');
+  const hasSel      = !!getSelForOwner(owner?.owner_id);
   return DOC_TYPES.filter(dt => {
     if (dt.needAgent && !hasAgent) return false;
     if (dt.selectOnly && !participate) return false;
+    // 未選屋的地主只顯示非選配申請書的文件（同意書等可提前收）
+    if (dt.selectOnly && !hasSel) return false;
     return true;
   });
 }
@@ -839,20 +842,6 @@ function renderOwnerDetail(ownerId) {
       <i class="ti ti-printer"></i> 列印分配位置申請書
     </button>` : ''}
 
-    <!-- 同意書狀態 -->
-    <div style="margin-top:12px;padding:10px 12px;background:var(--cs);border-radius:var(--rm);display:flex;align-items:center;justify-content:space-between;">
-      <div style="font-size:12px;">
-        <i class="ti ti-file-check" style="color:${owner.consent_submitted===true||owner.consent_submitted==='true'?'var(--green)':'var(--tt)'};"></i>
-        已交同意書
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="checkbox" 
-          ${owner.consent_submitted===true||owner.consent_submitted==='true'?'checked':''}
-          onchange="toggleConsent('${ownerId}', this.checked, this)"
-          style="width:15px;height:15px;cursor:pointer;">
-        <span style="font-size:11px;color:var(--tt);">${owner.consent_submitted===true||owner.consent_submitted==='true'?'已收':'未收'}</span>
-      </label>
-    </div>
     `}
 
     ${renderDocChecklist(ownerId)}
@@ -861,11 +850,13 @@ function renderOwnerDetail(ownerId) {
 
 function renderDocChecklist(ownerId) {
   const owner  = STATE.owners.find(o => o.owner_id == ownerId);
-  const has    = STATE.docStatus[ownerId] || {};   // { docType: { physical, uploaded } 或 true(舊格式) }
+  const has    = STATE.docStatus[ownerId] || {};
   const isTrust = !!(owner?.trust_partner_name);
   const trustName = owner?.trust_partner_name || '';
+  const hasSel = !!getSelForOwner(ownerId);
   const prog   = ownerDocProgress(ownerId);
   const allDone = prog.done === prog.total;
+  const hasConsent = owner?.consent_submitted === true || owner?.consent_submitted === 'true';
 
   // 判斷各文件的兩階段狀態
   function getStatus(dtKey) {
@@ -930,6 +921,25 @@ function renderDocChecklist(ownerId) {
        </div>` : '';
 
   return `<div style="margin-top:16px;border-top:0.5px solid var(--bt);padding-top:12px;">
+    <!-- 同意書狀態（不限選屋） -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;
+      background:${hasConsent?'var(--green-bg)':'var(--cs)'};border-radius:var(--rm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+        <i class="ti ti-file-certificate" style="color:${hasConsent?'var(--green)':'var(--tt)'};font-size:15px;"></i>
+        <span>都更同意書</span>
+        ${hasConsent
+          ? `<span style="font-size:10px;color:var(--green-text);background:var(--green-bg);padding:0 6px;border-radius:4px;">已收</span>`
+          : `<span style="font-size:10px;color:var(--red-text);">未收</span>`}
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox"
+          ${hasConsent?'checked':''}
+          onchange="toggleConsent('${ownerId}', this.checked, this)"
+          style="width:15px;height:15px;cursor:pointer;">
+        <span style="font-size:11px;color:var(--tt);">勾選已收</span>
+      </label>
+    </div>
+
     <div class="flex items-center justify-between mb-8">
       <span class="text-xs text-muted font-medium">收件進度</span>
       <span style="font-size:12px;font-weight:500;color:${allDone?'var(--green-text)':'var(--orange-text)'};">${prog.done} / ${prog.total}</span>
@@ -950,14 +960,19 @@ async function toggleConsent(ownerId, checked, el) {
   el.disabled = true;
   try {
     await apiPost('toggleConsent', { owner_id: ownerId, consent: checked });
-    // 更新本地 STATE
     const owner = STATE.owners.find(o => o.owner_id == ownerId);
     if (owner) owner.consent_submitted = checked;
     renderOwnerDetail(ownerId);
     renderOwnerList();
   } catch(e) {
-    el.checked = !checked; // 還原
-    alert('操作失敗：' + e.message);
+    if (e.message === 'Unauthorized') {
+      // token 過期，提示重新整理
+      alert('登入已過期，請重新整理頁面後再試');
+      el.checked = !checked;
+    } else {
+      el.checked = !checked;
+      alert('操作失敗：' + e.message);
+    }
   } finally {
     el.disabled = false;
   }
@@ -1965,17 +1980,19 @@ function printApplication(ownerId) {
 let MERGE_STATE = { usage: {}, groups: [], editing: null, selectedMembers: [] };
 
 async function loadMergeGroups() {
+  const el = document.getElementById('merge-list');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;color:var(--tt);padding:40px;">載入中…</div>';
   try {
     const [usage, groups] = await Promise.all([
-      apiGet('getOwnerUsage'),
-      apiGet('getMergeGroups'),
+      apiGet('getOwnerUsage').catch(() => ({})),
+      apiGet('getMergeGroups').catch(() => []),
     ]);
-    MERGE_STATE.usage = usage || {};
-    MERGE_STATE.groups = groups || [];
+    MERGE_STATE.usage  = usage  || {};
+    MERGE_STATE.groups = Array.isArray(groups) ? groups : [];
     renderMergeList();
   } catch(e) {
-    document.getElementById('merge-list').innerHTML =
-      `<div class="card" style="color:var(--red-text);">載入失敗：${e.message}</div>`;
+    el.innerHTML = `<div class="card" style="color:var(--red-text);">載入失敗：${e.message}</div>`;
   }
 }
 
