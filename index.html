@@ -49,13 +49,13 @@ button{cursor:pointer;border-radius:var(--rm);padding:6px 14px;border:none;font-
 .badge-resel {background:var(--accent-bg);color:var(--accent-text);}
 
 /* Layout */
-#app{display:flex;flex-direction:column;min-height:100vh;}
+#app{display:flex;flex-direction:column;height:100vh;}
 #topbar{display:flex;align-items:center;padding:10px 16px;background:var(--cp);
   border-bottom:0.5px solid var(--bt);gap:10px;flex-shrink:0;position:sticky;top:0;z-index:100;}
-#body{display:flex;flex:1;overflow:hidden;}
+#body{display:flex;flex:1;overflow:hidden;min-height:0;}
 #sidebar{width:200px;background:var(--cs);border-right:0.5px solid var(--bt);
   display:flex;flex-direction:column;padding:8px 0;overflow-y:auto;flex-shrink:0;}
-#main{flex:1;overflow:auto;padding:20px;}
+#main{flex:1;overflow:auto;padding:20px;min-height:0;}
 #detail{display:none;width:300px;background:var(--cp);border-left:0.5px solid var(--bt);
   overflow-y:auto;padding:16px;flex-shrink:0;align-self:stretch;}
 
