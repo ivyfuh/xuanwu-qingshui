@@ -513,7 +513,14 @@ async function loadOwners() {
 }
 
 async function loadSelections() {
-  try { STATE.selections = await apiGet('getSelections'); }
+  try {
+    STATE.selections = await apiGet('getSelections');
+    // 載入時一次解析 unit_nos / parking_nos，之後渲染不再重複 JSON.parse
+    for (const s of STATE.selections) {
+      if (!Array.isArray(s.unit_nos))    s.unit_nos    = JSON.parse(s.unit_nos    || '[]');
+      if (!Array.isArray(s.parking_nos)) s.parking_nos = JSON.parse(s.parking_nos || '[]');
+    }
+  }
   catch(e) { console.error('loadSelections', e); }
 }
 
@@ -564,14 +571,56 @@ function setFilter(f) {
   renderOwnerList();
 }
 
+let _searchTimer;
 function filterOwners() {
   STATE.search = document.getElementById('search').value;
-  renderOwnerList();
+  // debounce：連續輸入時只在停頓後重繪一次，避免每個按鍵都整列重算
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(renderOwnerList, 120);
 }
 
 function renderOwnerList() {
   const q = STATE.search.toLowerCase();
   const f = STATE.filter;
+
+  // ── 渲染前建立一次索引（O(N+M)），避免每位地主重複掃描全部選屋 ──
+  const selByOwner = new Map();   // owner_id(字串) → 該地主有效選屋
+  const unitOwners = new Map();   // 戶別 → 持有的 owner_id 陣列（查重複用）
+  const parkOwners = new Map();   // 車位 → 持有的 owner_id 陣列
+  for (const s of STATE.selections) {
+    if (s.status === 'deleted') continue;
+    const oid = String(s.owner_id);
+    if (!selByOwner.has(oid)) selByOwner.set(oid, s);
+    const us = Array.isArray(s.unit_nos)    ? s.unit_nos    : JSON.parse(s.unit_nos||'[]');
+    const ps = Array.isArray(s.parking_nos) ? s.parking_nos : JSON.parse(s.parking_nos||'[]');
+    for (const u of us) { let a = unitOwners.get(u); if (!a) unitOwners.set(u, a=[]); a.push(oid); }
+    for (const p of ps) { let a = parkOwners.get(p); if (!a) parkOwners.set(p, a=[]); a.push(oid); }
+  }
+  const ownerById = new Map(STATE.owners.map(o => [String(o.owner_id), o]));
+  const selOf = id => selByOwner.get(String(id)) || null;
+  const isDup = sel => {
+    const oid = String(sel.owner_id);
+    const us = Array.isArray(sel.unit_nos)    ? sel.unit_nos    : JSON.parse(sel.unit_nos||'[]');
+    const ps = Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]');
+    for (const u of us) { const a = unitOwners.get(u); if (a && a.some(x => x !== oid)) return true; }
+    for (const p of ps) { const a = parkOwners.get(p); if (a && a.some(x => x !== oid)) return true; }
+    return false;
+  };
+  const statusOf = sel => {
+    if (!sel) return 'none';
+    if (sel.is_over_limit) return 'over';
+    if (isDup(sel)) return 'dup';
+    if (sel.status === 'draft') return 'draft';
+    if (sel.status === 'needs_reselect') return 'resel';
+    return 'ok';
+  };
+  const _progCache = new Map();   // 文件進度每位地主只算一次
+  const progOf = id => {
+    const k = String(id);
+    let r = _progCache.get(k);
+    if (!r) { r = ownerDocProgress(id); _progCache.set(k, r); }
+    return r;
+  };
 
   // 依編號排序
   const sorted = [...STATE.owners].sort((a,b) => {
@@ -582,15 +631,15 @@ function renderOwnerList() {
 
   let list = sorted.filter(o => {
     if (q && !o.name?.toLowerCase().includes(q) && !String(o.serial_no||'').includes(q)) return false;
-    const sel = getSelForOwner(o.owner_id);
+    const sel = selOf(o.owner_id);
     const nonpart = (o.participate==='false'||o.participate===false||o.participate==='post');
-    const prog = ownerDocProgress(o.owner_id);
+    const prog = progOf(o.owner_id);
     if (f === 'selected'    && (!sel || sel.status==='draft' || nonpart)) return false;
     if (f === 'unselected'  && (sel && !nonpart ? sel.status!=='draft' : false) ) { /* keep drafts/none */ }
     if (f === 'unselected'  && (nonpart || (sel && sel.status==='confirmed'))) return false;
     if (f === 'incomplete') {
       // 只要有一項紙本未收到就篩出來（需已選屋）
-      const s = getSelForOwner(o.owner_id);
+      const s = selOf(o.owner_id);
       const np = (o.participate==='false'||o.participate===false||o.participate==='post');
       if (!s || np) return false;
       const has = STATE.docStatus[o.owner_id] || {};
@@ -604,14 +653,14 @@ function renderOwnerList() {
       if (allPhys) return false;
     }
     if (f === 'nodoc') {
-      const s = getSelForOwner(o.owner_id);
+      const s = selOf(o.owner_id);
       const np = (o.participate==='false'||o.participate===false||o.participate==='post');
       if (!s || np) return false;  // 未選屋不算
       if (prog.done >= prog.total) return false;  // 已歸檔完成不顯示
       return true;
     }
     if (f === 'nonparticipate' && !nonpart) return false;
-    if (f === 'dup')  { if (!sel || !checkDuplicate(sel)) return false; }
+    if (f === 'dup')  { if (!sel || !isDup(sel)) return false; }
     if (f === 'over') { if (!sel || !sel.is_over_limit) return false; }
     if (f === 'draft'){ if (!sel || sel.status!=='draft') return false; }
     return true;
@@ -621,16 +670,16 @@ function renderOwnerList() {
   const all  = STATE.owners;
   const participating = all.filter(o => !(o.participate==='false'||o.participate===false||o.participate==='post'));
   const selectedCount = participating.filter(o => {
-    const s = getSelForOwner(o.owner_id); return s && s.status==='confirmed';
+    const s = selOf(o.owner_id); return s && s.status==='confirmed';
   }).length;
   const unselectedCount = participating.filter(o => {
-    const s = getSelForOwner(o.owner_id); return !s || s.status==='draft';
+    const s = selOf(o.owner_id); return !s || s.status==='draft';
   }).length;
   const incompleteCount = all.filter(o => {
-    const s = getSelForOwner(o.owner_id);
+    const s = selOf(o.owner_id);
     const np = (o.participate==='false'||o.participate===false||o.participate==='post');
     if (!s || np) return false;  // 未選屋或不參與不算
-    const p = ownerDocProgress(o.owner_id);
+    const p = progOf(o.owner_id);
     return p.done < p.total;
   }).length;
   const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false||o.participate==='post')).length;
@@ -645,11 +694,11 @@ function renderOwnerList() {
   const stLabel = { ok:'已選', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未選' };
 
   const rows = list.map(o => {
-    const sel = getSelForOwner(o.owner_id);
+    const sel = selOf(o.owner_id);
     const nonpart = (o.participate==='false'||o.participate===false||o.participate==='post');
-    const st  = ownerStatus(o, sel);
+    const st  = statusOf(sel);
     const isActive = STATE.selected_owner_id == o.owner_id;
-    const prog = ownerDocProgress(o.owner_id);
+    const prog = progOf(o.owner_id);
     const hasSelection = sel && !nonpart;
     // 紙本：physical=true 或 uploaded=true 的數量
     const physDone = hasSelection ? (() => {
@@ -683,14 +732,12 @@ function renderOwnerList() {
     if (sel && !nonpart) {
       const units = Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]');
       const parks = Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]');
-      const allSels = STATE.selections.filter(s => s.owner_id !== o.owner_id && s.status !== 'deleted');
+      const myOid = String(o.owner_id);
       const unitTags = units.map(u => {
-        const dupWith = allSels.find(s => {
-          const uu = Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos||'[]');
-          return uu.includes(u);
-        });
-        const dupOwner = dupWith ? STATE.owners.find(ow => ow.owner_id === dupWith.owner_id) : null;
-        return dupWith
+        // 透過索引找「跟誰重複」，免去逐戶掃描全部選屋
+        const otherOid = (unitOwners.get(u) || []).find(x => x !== myOid);
+        const dupOwner = otherOid != null ? ownerById.get(otherOid) : null;
+        return otherOid != null
           ? `<span style="color:var(--red-text);font-size:10px;" title="與${dupOwner?.name||'?'}重複">⚠${u}</span>`
           : `<span style="color:var(--ts);font-size:10px;">${u}</span>`;
       });
@@ -861,15 +908,16 @@ function renderDocChecklist(ownerId) {
   // 判斷各文件的兩階段狀態
   function getStatus(dtKey) {
     const v = has[dtKey];
-    if (!v) return { physical: false, uploaded: false };
-    if (v === true) return { physical: true, uploaded: true };   // 舊格式相容
-    return { physical: !!v.physical, uploaded: !!v.uploaded };
+    if (!v) return { physical: false, uploaded: false, note: '' };
+    if (v === true) return { physical: true, uploaded: true, note: '' };   // 舊格式相容
+    return { physical: !!v.physical, uploaded: !!v.uploaded, note: v.note || '' };
   }
 
   const items = requiredDocsFor(owner).map(dt => {
     const st = getStatus(dt.key);
     const uploaded = st.uploaded;
     const physical = st.physical;
+    const note     = st.note;
 
     // 狀態圖示：已歸檔 > 已收實體 > 待收
     const icon = uploaded
@@ -902,14 +950,25 @@ function renderDocChecklist(ownerId) {
       ? `<div style="font-size:10px;color:var(--brand-text);padding:1px 0 3px 21px;">↳ 需兩份：${owner.name} + ${trustName}</div>`
       : '';
 
+    // 收件備註（缺漏/問題標註，如：印章模糊、日期未填）
+    const noteBtn = `<button onclick="editDocNote('${ownerId}','${dt.key}')"
+      style="font-size:10px;padding:1px 6px;border:0.5px solid ${note?'var(--orange)':'var(--bt)'};
+      color:${note?'var(--orange-text)':'var(--tt)'};background:${note?'var(--orange-bg)':'var(--cs)'};
+      border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;">${note?'備註✎':'備註'}</button>`;
+    const noteLine = note
+      ? `<div style="font-size:10px;color:var(--orange-text);padding:1px 0 3px 21px;"><i class="ti ti-note"></i> ${note}</div>`
+      : '';
+
     return `<div style="padding:4px 0;">
       <div class="flex items-center gap-6" style="font-size:12px;">
         ${icon}
         <span style="color:${uploaded?'var(--tp)':physical?'var(--tp)':'var(--tt)'};">${dt.key}</span>
         ${statusLabel}
         ${quickBtn}
+        ${noteBtn}
       </div>
       ${trustNote}
+      ${noteLine}
     </div>`;
   }).join('');
 
@@ -996,6 +1055,22 @@ async function markPhysical(ownerId, docType, received, btnEl) {
     btnEl.disabled = false;
     btnEl.textContent = received ? '現場✓' : '取消';
     alert('操作失敗：' + e.message);
+  }
+}
+
+// 文件收件備註：先收件、但標註缺什麼或有什麼問題（印章模糊、日期未填等）
+async function editDocNote(ownerId, docType) {
+  const has = STATE.docStatus[ownerId] || {};
+  const v = has[docType];
+  const current = (v && typeof v === 'object' && v.note) ? v.note : '';
+  const note = prompt(`「${docType}」收件備註\n（缺漏或問題，例：印章模糊、日期未填、缺一份；清空可移除備註）`, current);
+  if (note === null) return;  // 使用者取消
+  try {
+    await apiPost('saveDocNote', { owner_id: ownerId, doc_type: docType, note: note.trim() });
+    await loadDocStatus();
+    renderOwnerDetail(ownerId);
+  } catch(e) {
+    alert('備註儲存失敗：' + e.message);
   }
 }
 
@@ -1245,7 +1320,39 @@ async function submitSelection(ownerId, status) {
     await Promise.all([loadOwners(), loadSelections()]);
     renderOwnerList();
     renderOwnerDetail(ownerId);
+    // 本次送出的戶別/車位若已有其他地主選擇，跳出重複提醒
+    notifyDuplicateSelection(ownerId, units, parks);
   } catch(e) { btnReset(btn); alert('儲存失敗：' + e.message); }
+}
+
+// 比對本次送出的戶別/車位，若與其他地主重複則提示有幾位、是誰
+function notifyDuplicateSelection(ownerId, units, parks) {
+  const myOid = String(ownerId);
+  const nameOf = id => STATE.owners.find(o => String(o.owner_id) === String(id))?.name || ('#' + id);
+  // 找出（本人以外）也選了同一戶別/車位的地主姓名
+  const othersHolding = (no, key) => {
+    const names = new Map();   // oid → name，去重
+    for (const s of STATE.selections) {
+      if (s.status === 'deleted') continue;
+      const oid = String(s.owner_id);
+      if (oid === myOid) continue;
+      const arr = Array.isArray(s[key]) ? s[key] : JSON.parse(s[key] || '[]');
+      if (arr.includes(no)) names.set(oid, nameOf(oid));
+    }
+    return [...names.values()];
+  };
+  const lines = [];
+  for (const u of units) {
+    const others = othersHolding(u, 'unit_nos');
+    if (others.length) lines.push(`戶別 ${u}：另有 ${others.length} 位已選（${others.join('、')}），連同本次共 ${others.length + 1} 位`);
+  }
+  for (const p of parks) {
+    const others = othersHolding(p, 'parking_nos');
+    if (others.length) lines.push(`車位 ${p}：另有 ${others.length} 位已選（${others.join('、')}），連同本次共 ${others.length + 1} 位`);
+  }
+  if (lines.length) {
+    alert('⚠️ 重複選擇提醒\n\n' + lines.join('\n') + '\n\n請確認是否需要協調。');
+  }
 }
 
 async function confirmSelection(ownerId) {
@@ -1672,6 +1779,66 @@ function navTo(view) {
   if (view === 'lottery') loadDashboard();
   if (view === 'settle') loadSettle();
   if (view === 'draw') loadLotteryList();
+  if (view === 'settings') renderSettings();
+}
+
+// ============================================================
+//  案件設定 — 地主顯示頁五階段進度
+// ============================================================
+const STAGE_NAMES = ['說明會','自辦公聽會','選屋期間','抽籤','都更案送件'];
+
+function renderSettings() {
+  const el = document.getElementById('settings-content');
+  if (!el) return;
+  const cfg = STATE.caseConfig || {};
+  // 以名稱對應既有設定，缺的補預設（選屋期間給預設日期）
+  const byName = {};
+  if (Array.isArray(cfg.stages)) cfg.stages.forEach(s => { if (s && s.name) byName[s.name] = s; });
+
+  const rows = STAGE_NAMES.map((n, i) => {
+    const s = byName[n] || { date: n === '選屋期間' ? '115/07/01-115/07/31' : '', status: 'upcoming' };
+    const opt = (v, label) => `<option value="${v}" ${s.status === v ? 'selected' : ''}>${label}</option>`;
+    return `<div style="display:grid;grid-template-columns:104px 1fr 150px;gap:10px;align-items:center;margin-bottom:10px;">
+      <div style="font-size:13px;font-weight:500;">${n}</div>
+      <input type="text" id="stg-date-${i}" value="${s.date || ''}" placeholder="例：115/07/01 或 115/07/01-115/07/31">
+      <select id="stg-status-${i}">
+        ${opt('upcoming','即將開始')}
+        ${opt('active','已開始 / 進行中')}
+        ${opt('done','已完成')}
+      </select>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:14px;font-weight:500;margin-bottom:4px;">地主顯示頁・五階段進度</div>
+    <div class="text-xs text-muted" style="margin-bottom:16px;">這裡設定的日期與狀態會即時顯示在地主查閱頁（public）最上方的進度條。日期為自由文字（民國年），狀態三選一。</div>
+    <div style="display:grid;grid-template-columns:104px 1fr 150px;gap:10px;margin-bottom:6px;font-size:11px;color:var(--tt);">
+      <div>階段</div><div>日期</div><div>狀態</div>
+    </div>
+    ${rows}
+    <div id="settings-msg" style="margin:10px 0;"></div>
+    <button class="btn-success" onclick="saveStages()"><i class="ti ti-check"></i> 儲存五階段</button>
+  `;
+}
+
+async function saveStages() {
+  const stages = STAGE_NAMES.map((n, i) => ({
+    name:   n,
+    date:   document.getElementById('stg-date-' + i)?.value || '',
+    status: document.getElementById('stg-status-' + i)?.value || 'upcoming',
+  }));
+  const btn = document.querySelector('#settings-content .btn-success');
+  if (btn) { btn.disabled = true; btn.textContent = '儲存中…'; }
+  const msg = document.getElementById('settings-msg');
+  try {
+    await apiPost('saveCase', { stages });
+    STATE.caseConfig = { ...(STATE.caseConfig || {}), stages };
+    if (msg) msg.innerHTML = `<div style="background:var(--green-bg);color:var(--green-text);padding:8px 12px;border-radius:6px;font-size:12px;">已儲存，地主頁進度條已即時更新。</div>`;
+  } catch(e) {
+    if (msg) msg.innerHTML = `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 12px;border-radius:6px;font-size:12px;">儲存失敗：${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-check"></i> 儲存五階段'; }
+  }
 }
 
 // ============================================================
@@ -2601,8 +2768,10 @@ function renderDashboard(unitMap, parkMap) {
     return s && s.status !== 'deleted';
   }).length;
 
-  // 選屋率
+  // 選屋率（分母為「參與選配」人數，不含不參與權變者）
   const selRate = participating.length > 0 ? Math.round(selOwners / participating.length * 100) : 0;
+  const totalOwners   = STATE.owners.length;                       // 地主總數
+  const nonpartOwners = totalOwners - participating.length;        // 不參與權變人數
 
   // 車戶比（剩餘車位/剩餘戶別）
   const carRatio = remUnits > 0 ? (remParks / remUnits).toFixed(2) : '—';
@@ -2738,7 +2907,7 @@ function renderDashboard(unitMap, parkMap) {
       <div class="stat-card">
         <div class="stat-n" style="color:var(--accent);">${selRate}%</div>
         <div class="stat-l">選屋率</div>
-        <div class="text-xs text-muted">${selOwners}/${participating.length} 人</div>
+        <div class="text-xs text-muted">${selOwners}/${participating.length} 人（參與選配）</div>
       </div>
       <div class="stat-card">
         <div class="stat-n" style="color:var(--brand-text);">${remUnits}</div>
@@ -2766,7 +2935,11 @@ function renderDashboard(unitMap, parkMap) {
     <div class="card mb-16">
       <div class="flex justify-between mb-8">
         <span style="font-size:13px;font-weight:500;">選屋進度</span>
-        <span style="font-size:12px;color:var(--ts);">${selOwners} / ${participating.length} 人已選屋</span>
+        <span style="font-size:12px;color:var(--ts);">
+          地主總數 <b style="color:var(--tp);">${totalOwners}</b> 人
+          （參與選配 ${participating.length}・不參與權變 ${nonpartOwners}）
+          ・已選屋 ${selOwners}/${participating.length}
+        </span>
       </div>
       <div class="pbar-bg" style="height:10px;border-radius:5px;">
         <div class="pbar-fill" style="width:${selRate}%;background:var(--green);height:10px;border-radius:5px;"></div>

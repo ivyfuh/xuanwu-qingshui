@@ -333,33 +333,8 @@ body { background: var(--ct); }
     <div class="stat-card"><div class="stat-n" id="s-basement" style="color:var(--brand-text);">B5</div><div class="stat-l">地下層數</div></div>
   </div>
 
-  <!-- Timeline -->
-  <div class="timeline">
-    <div class="tl-step">
-      <div class="tl-dot" style="background:var(--green-bg);border:2px solid var(--green);"><i class="ti ti-check" style="font-size:12px;color:var(--green);"></i></div>
-      <div class="tl-label" style="color:var(--green-text);font-weight:500;">公告公展</div>
-    </div>
-    <div class="tl-line" style="background:var(--green);"></div>
-    <div class="tl-step">
-      <div class="tl-dot" style="background:var(--green-bg);border:2px solid var(--green);"><i class="ti ti-check" style="font-size:12px;color:var(--green);"></i></div>
-      <div class="tl-label" style="color:var(--green-text);font-weight:500;">說明會</div>
-    </div>
-    <div class="tl-line" style="background:var(--green);"></div>
-    <div class="tl-step">
-      <div class="tl-dot" style="background:#E8EDF0;border:2px solid #748B97;"><i class="ti ti-pencil" style="font-size:12px;color:#748B97;"></i></div>
-      <div class="tl-label" style="color:#3D4D56;font-weight:500;">選屋期間<br><span id="tl-now" style="color:var(--orange-text);">進行中</span></div>
-    </div>
-    <div class="tl-line" style="background:var(--bt);"></div>
-    <div class="tl-step">
-      <div class="tl-dot" style="background:var(--cs);border:1px solid var(--bs);"><i class="ti ti-dice" style="font-size:12px;color:var(--tt);"></i></div>
-      <div class="tl-label text-muted">抽籤<br><span id="tl-lottery">—</span></div>
-    </div>
-    <div class="tl-line" style="background:var(--bt);"></div>
-    <div class="tl-step">
-      <div class="tl-dot" style="background:var(--cs);border:1px solid var(--bs);"><i class="ti ti-writing" style="font-size:12px;color:var(--tt);"></i></div>
-      <div class="tl-label text-muted">簽約</div>
-    </div>
-  </div>
+  <!-- Timeline（五階段，由後台案件設定驅動） -->
+  <div class="timeline" id="timeline"></div>
 
   <!-- Selection grid + panel -->
   <div class="card mb-16" style="padding:0;overflow:hidden;">
@@ -471,6 +446,7 @@ let STATE = {
 // ============================================================
 window.onload = async function() {
   await loadConfig();
+  renderTimeline();   // 確保即使 getCase 失敗也以預設五階段顯示
   await Promise.all([loadStatus(), loadUnitData(), loadParkingData()]);
   renderGrid();
   renderStats();
@@ -511,9 +487,55 @@ async function loadConfig() {
       document.getElementById('countdown-detail').textContent = days > 0 ? `還剩約 ${hLeft} 小時` : '今天截止';
     }
   }
-  if (cfg.lottery_date) document.getElementById('tl-lottery').textContent = cfg.lottery_date;
+  renderTimeline();
   // 多則公告
   loadAnnouncements();
+}
+
+// ============================================================
+//  TIMELINE（五階段進度）
+// ============================================================
+// 後台未設定時的預設五階段
+const DEFAULT_STAGES = [
+  { name:'說明會',      date:'', status:'upcoming' },
+  { name:'自辦公聽會',  date:'', status:'upcoming' },
+  { name:'選屋期間',    date:'115/07/01-115/07/31', status:'upcoming' },
+  { name:'抽籤',        date:'', status:'upcoming' },
+  { name:'都更案送件',  date:'', status:'upcoming' },
+];
+
+function renderTimeline() {
+  const el = document.getElementById('timeline');
+  if (!el) return;
+  const stages = (STATE.cfg && Array.isArray(STATE.cfg.stages) && STATE.cfg.stages.length)
+    ? STATE.cfg.stages : DEFAULT_STAGES;
+
+  // 狀態樣式：已完成 / 已開始(進行中) / 即將開始
+  const META = {
+    done:     { dotBg:'var(--green-bg)', dotBorder:'var(--green)', icon:'ti-check',  iconColor:'var(--green)', labelColor:'var(--green-text)', tag:'已完成',   tagColor:'var(--green-text)' },
+    active:   { dotBg:'#E8EDF0',         dotBorder:'#748B97',      icon:'ti-pencil', iconColor:'#748B97',      labelColor:'#3D4D56',           tag:'已開始',   tagColor:'var(--orange-text)' },
+    upcoming: { dotBg:'var(--cs)',       dotBorder:'var(--bs)',    icon:'ti-clock',  iconColor:'var(--tt)',    labelColor:'var(--tt)',         tag:'即將開始', tagColor:'var(--tt)' },
+  };
+
+  let html = '';
+  stages.forEach((s, i) => {
+    const m = META[s.status] || META.upcoming;
+    if (i > 0) {
+      const prevDone = stages[i-1].status === 'done' || stages[i-1].status === 'active';
+      html += `<div class="tl-line" style="background:${prevDone ? 'var(--green)' : 'var(--bt)'};"></div>`;
+    }
+    html += `<div class="tl-step">
+      <div class="tl-dot ${s.status==='active'?'tl-dot-active':''}" style="background:${m.dotBg};border:2px solid ${m.dotBorder};">
+        <i class="ti ${m.icon}" style="font-size:12px;color:${m.iconColor};"></i>
+      </div>
+      <div class="tl-label" style="color:${m.labelColor};font-weight:500;">
+        ${s.name}
+        ${s.date ? `<br><span style="font-size:9px;color:var(--tt);font-weight:400;">${s.date}</span>` : ''}
+        <br><span style="font-size:9px;color:${m.tagColor};">${m.tag}</span>
+      </div>
+    </div>`;
+  });
+  el.innerHTML = html;
 }
 
 async function loadAnnouncements() {
