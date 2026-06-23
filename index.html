@@ -2872,18 +2872,22 @@ function renderDashboard(unitMap, parkMap) {
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:600;color:${Number(cr.land_owner_ratio)>=75?'var(--green-text)':'var(--orange-text)'};">${cr.land_owner_ratio}%</div>
           <div style="font-size:11px;color:var(--tt);margin-top:2px;">土地所有權人數</div>
+          <div style="font-size:11px;color:var(--tp);margin-top:1px;font-weight:500;">${cr.consent_count}/${cr.total_count} 人</div>
         </div>
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:600;color:${Number(cr.land_area_ratio)>=75?'var(--green-text)':'var(--orange-text)'};">${cr.land_area_ratio}%</div>
           <div style="font-size:11px;color:var(--tt);margin-top:2px;">土地面積</div>
+          ${cr.land_area_total ? `<div style="font-size:11px;color:var(--tp);margin-top:1px;font-weight:500;">${Math.round(cr.land_area_consent)}/${Math.round(cr.land_area_total)} 坪</div>` : ''}
         </div>
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:600;color:${Number(cr.build_owner_ratio)>=75?'var(--green-text)':'var(--orange-text)'};">${cr.build_owner_ratio}%</div>
           <div style="font-size:11px;color:var(--tt);margin-top:2px;">建物所有權人數</div>
+          <div style="font-size:11px;color:var(--tp);margin-top:1px;font-weight:500;">${cr.build_owner_consent != null ? cr.build_owner_consent : cr.consent_count}/${cr.total_count} 人</div>
         </div>
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:600;color:${Number(cr.build_area_ratio)>=75?'var(--green-text)':'var(--orange-text)'};">${cr.build_area_ratio}%</div>
           <div style="font-size:11px;color:var(--tt);margin-top:2px;">建物面積</div>
+          ${cr.build_area_total ? `<div style="font-size:11px;color:var(--tp);margin-top:1px;font-weight:500;">${Math.round(cr.build_area_consent)}/${Math.round(cr.build_area_total)} 坪</div>` : ''}
         </div>
       </div>
       <div style="font-size:10px;color:var(--tt);margin-top:8px;text-align:right;">已交同意書 ${cr.consent_count} / ${cr.total_count} 人・更新 ${new Date(cr.updated_at).toLocaleString('zh-TW')}</div>
