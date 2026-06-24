@@ -302,6 +302,14 @@ body { background: var(--ct); }
       <span class="badge" id="countdown-badge" style="background:rgba(255,255,255,.12);color:rgba(255,255,255,.85);backdrop-filter:blur(4px);">
         <i class="ti ti-calendar"></i> —
       </span>
+      <button id="reload-btn" onclick="reloadPublic()"
+        style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.95);color:var(--brand-dark);
+        border:none;border-radius:999px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer;
+        box-shadow:0 1px 4px rgba(0,0,0,.18);transition:background .15s,transform .1s;"
+        onmouseover="this.style.background='#fff'" onmouseout="this.style.background='rgba(255,255,255,.95)'"
+        onmousedown="this.style.transform='scale(.97)'" onmouseup="this.style.transform='scale(1)'">
+        <i class="ti ti-refresh"></i> 重新載入
+      </button>
     </div>
   </div>
 </div>
@@ -453,11 +461,37 @@ window.onload = async function() {
   document.getElementById('update-time').textContent = '更新：' + new Date().toLocaleString('zh-TW');
 };
 
-async function apiGet(action, params={}) {
+// 「重新載入」按鈕：原地重新抓最新資料（給不熟悉瀏覽器重整的長輩）
+async function reloadPublic() {
+  const btn = document.getElementById('reload-btn');
+  const old = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> 更新中…'; }
+  try {
+    await loadConfig();
+    renderTimeline();
+    await Promise.all([loadStatus(), loadUnitData(), loadParkingData()]);
+    renderGrid();
+    renderStats();
+    document.getElementById('update-time').textContent = '更新：' + new Date().toLocaleString('zh-TW');
+  } catch (e) {
+    location.reload();   // 萬一原地更新失敗，退回整頁重載
+    return;
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = old; }
+}
+
+async function apiGet(action, params={}, retries=2) {
   const qs = new URLSearchParams({ action, ...params });
-  const res = await fetch(`${API_URL}?${qs}`);
-  const d   = await res.json();
-  return d.status === 'ok' ? d.data : null;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(`${API_URL}?${qs}`);
+      const d   = await res.json();
+      return d.status === 'ok' ? d.data : null;
+    } catch (e) {
+      if (attempt >= retries) throw e;
+      await new Promise(r => setTimeout(r, 600 * (attempt + 1)));  // 失敗稍等再試
+    }
+  }
 }
 
 async function loadConfig() {
