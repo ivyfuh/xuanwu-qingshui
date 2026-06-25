@@ -1181,14 +1181,16 @@ function previewSelection(ownerId) {
   // 同步計算，不需 await
   (() => {
       let errs = [];
+      let houseTotal = 0, parkTotal = 0;
       units.forEach(u => {
         if (!unitMap[u]) errs.push(`戶別 ${u} 不存在`);
-        else total += unitMap[u].total_value;
+        else houseTotal += unitMap[u].total_value;
       });
       parks.forEach(p => {
         if (!parkMap[p]) errs.push(`車位 ${p} 不存在`);
-        else total += parkMap[p].price;
+        else parkTotal += parkMap[p].price;
       });
+      total = houseTotal + parkTotal;
       const settle = total - rights;
       const over   = total > limit;
       let html = '';
@@ -1196,7 +1198,9 @@ function previewSelection(ownerId) {
         html = `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;">${errs.join('<br>')}</div>`;
       } else {
         html = `<div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;font-size:12px;">
-          <div class="flex justify-between mb-4"><span class="text-muted">總選配價值</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
+          <div class="flex justify-between mb-4"><span class="text-muted">房屋金額（${units.length} 戶）</span><span>NT$${fmt(houseTotal)}</span></div>
+          <div class="flex justify-between mb-4"><span class="text-muted">車位金額（${parks.length} 位）</span><span>NT$${fmt(parkTotal)}</span></div>
+          <div class="flex justify-between mb-4" style="border-top:0.5px solid var(--bt);padding-top:5px;"><span class="text-muted">總選配價值</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
           <div class="flex justify-between mb-4"><span class="text-muted">選配上限（110%）</span><span>NT$${fmt(limit)}</span></div>
           <div class="flex justify-between mb-4"><span class="text-muted">找補</span>
             <span style="font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
@@ -1940,6 +1944,7 @@ async function loadAnnounceList() {
     el.innerHTML = '<div class="card" style="text-align:center;color:var(--tt);padding:40px;">目前沒有公告</div>';
     return;
   }
+  window.ANNOUNCEMENTS = list;
   el.innerHTML = list.map(a => {
     const lv = ANN_LEVELS[a.level] || ANN_LEVELS.info;
     return `<div class="card mb-8" style="display:flex;align-items:flex-start;gap:12px;">
@@ -1950,58 +1955,73 @@ async function loadAnnounceList() {
         ${a.content?`<div class="text-sm text-muted" style="margin-top:3px;line-height:1.5;">${a.content}</div>`:''}
         <div class="text-xs text-muted" style="margin-top:4px;">${a.date||''}</div>
       </div>
-      <button class="btn-secondary" style="padding:4px 10px;font-size:12px;flex-shrink:0;"
-        onclick="deleteAnnounce('${a.ann_id}')"><i class="ti ti-trash"></i></button>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn-secondary" style="padding:4px 10px;font-size:12px;"
+          onclick="editAnnounce('${a.ann_id}')" title="編輯"><i class="ti ti-pencil"></i></button>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:12px;"
+          onclick="deleteAnnounce('${a.ann_id}')" title="刪除"><i class="ti ti-trash"></i></button>
+      </div>
     </div>`;
   }).join('');
 }
 
-function openAnnounceModal() {
-  document.getElementById('modal-title').textContent = '新增公告';
+function editAnnounce(id) {
+  const ann = (window.ANNOUNCEMENTS || []).find(a => a.ann_id == id);
+  if (ann) openAnnounceModal(ann);
+}
+
+function openAnnounceModal(ann) {
+  const editing = !!(ann && ann.ann_id);
+  const esc = s => String(s || '').replace(/"/g, '&quot;');
+  const sel = lv => (ann ? ann.level === lv : lv === 'important') ? 'selected' : '';
+  document.getElementById('modal-title').textContent = editing ? '編輯公告' : '新增公告';
   document.getElementById('modal-body').innerHTML = `
     <div class="mb-12">
       <div class="field-label">重要程度</div>
       <select id="ann-level">
-        <option value="info">通知（藍灰）</option>
-        <option value="important" selected>公告（橘）</option>
-        <option value="urgent">重要（紅）</option>
+        <option value="info" ${sel('info')}>通知（藍灰）</option>
+        <option value="important" ${sel('important')}>公告（橘）</option>
+        <option value="urgent" ${sel('urgent')}>重要（紅）</option>
       </select>
     </div>
     <div class="mb-12">
       <div class="field-label">標題 *</div>
-      <input type="text" id="ann-title" placeholder="例：選屋截止日延長通知">
+      <input type="text" id="ann-title" placeholder="例：選屋截止日延長通知" value="${esc(ann?.title)}">
     </div>
     <div class="mb-12">
       <div class="field-label">內容（可空白）</div>
-      <textarea id="ann-content" rows="3" placeholder="詳細說明…"></textarea>
+      <textarea id="ann-content" rows="3" placeholder="詳細說明…">${ann?.content || ''}</textarea>
     </div>
     <div class="mb-16">
       <div class="field-label">日期</div>
-      <input type="date" id="ann-date" value="${new Date().toISOString().slice(0,10)}">
+      <input type="date" id="ann-date" value="${ann?.date || new Date().toISOString().slice(0,10)}">
     </div>
     <div class="flex gap-8 justify-between">
       <button class="btn-secondary" onclick="closeModal()">取消</button>
-      <button class="btn-primary" onclick="submitAnnounce()">發布公告</button>
+      <button class="btn-primary" onclick="submitAnnounce('${editing ? ann.ann_id : ''}')">${editing ? '儲存修改' : '發布公告'}</button>
     </div>
   `;
   openModal();
 }
 
-async function submitAnnounce() {
+async function submitAnnounce(annId) {
   const title = document.getElementById('ann-title').value.trim();
   if (!title) { alert('標題為必填'); return; }
   const btn = document.querySelector('#modal-box .btn-primary');
-  btnLoading(btn, '發布中…');
+  const editing = !!annId;
+  btnLoading(btn, editing ? '儲存中…' : '發布中…');
   try {
-    await apiPost('addAnnouncement', {
+    const body = {
       level:   document.getElementById('ann-level').value,
       title,
       content: document.getElementById('ann-content').value,
       date:    document.getElementById('ann-date').value,
-    });
+    };
+    if (editing) { body.ann_id = annId; await apiPost('updateAnnouncement', body); }
+    else { await apiPost('addAnnouncement', body); }
     closeModal();
     loadAnnounceList();
-  } catch(e) { btnReset(btn); alert('發布失敗：' + e.message); }
+  } catch(e) { btnReset(btn); alert((editing ? '儲存' : '發布') + '失敗：' + e.message); }
 }
 
 async function deleteAnnounce(annId) {
