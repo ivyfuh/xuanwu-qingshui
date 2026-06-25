@@ -2079,36 +2079,36 @@ async function deleteAnnounce(annId) {
 // ============================================================
 //  PRINT APPLICATION FORM 列印分配位置申請書
 // ============================================================
-function printApplication(ownerId) {
+async function printApplication(ownerId) {
   const owner = STATE.owners.find(o => o.owner_id == ownerId);
-  const sel   = getSelForOwner(ownerId);
   if (!owner) return;
+  const sel = getSelForOwner(ownerId);
 
-  const cfg = STATE.caseConfig || {};
-  const caseName = cfg.case_name || '清水段';
+  // 先把視窗開起來，保住點擊手勢避免被擋彈窗
+  const win = window.open('', '_blank');
+  if (win) win.document.write('<p style="font-family:sans-serif;padding:24px;">產生申請書中…</p>');
+
+  // #3：確保合併組已載入，分配申請書才能含「合併選屋單元」
+  if (!MERGE_STATE.groups || !MERGE_STATE.groups.length) {
+    try { await loadMergeGroups(); } catch(e) {}
+  }
 
   // 個人選配
   const personalUnits = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
   const personalParks = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
 
-  // 合併選配（從 MERGE_STATE 取，加標注共有）
+  // 合併選配（該地主所屬合併組分到的戶別/車位，去重後併入）
   const mergeUnits = [], mergeParks = [];
-  if (MERGE_STATE && MERGE_STATE.groups) {
-    MERGE_STATE.groups.forEach(g => {
-      const isMember = (g.members||[]).some(m => m.owner_id === ownerId);
-      if (!isMember) return;
-      const gUnits = Array.isArray(g.unit_nos) ? g.unit_nos : JSON.parse(g.unit_nos||'[]');
-      const gParks = Array.isArray(g.parking_nos) ? g.parking_nos : JSON.parse(g.parking_nos||'[]');
-      const n = (g.members||[]).length;
-      gUnits.forEach(u => mergeUnits.push(u));
-      gParks.forEach(p => mergeParks.push(p));
-    });
-  }
+  (MERGE_STATE.groups || []).forEach(g => {
+    if (!(g.members||[]).some(m => m.owner_id === ownerId)) return;
+    const gUnits = Array.isArray(g.unit_nos) ? g.unit_nos : JSON.parse(g.unit_nos||'[]');
+    const gParks = Array.isArray(g.parking_nos) ? g.parking_nos : JSON.parse(g.parking_nos||'[]');
+    gUnits.forEach(u => { if (!personalUnits.includes(u) && !mergeUnits.includes(u)) mergeUnits.push(u); });
+    gParks.forEach(p => { if (!personalParks.includes(p) && !mergeParks.includes(p)) mergeParks.push(p); });
+  });
 
-  const allUnits = [...personalUnits, ...mergeUnits];
-  const allParks = [...personalParks, ...mergeParks];
-  const unitNos = allUnits;
-  const parkNos = allParks;
+  const unitNos = [...personalUnits, ...mergeUnits];
+  const parkNos = [...personalParks, ...mergeParks];
 
   const today = new Date();
   const rocYear = today.getFullYear() - 1911;
@@ -2124,18 +2124,20 @@ function printApplication(ownerId) {
   * { box-sizing: border-box; }
   body { font-family: "DFKai-SB","BiauKai","標楷體","Noto Serif TC",serif; font-size: 15px; line-height: 1.9; color: #000; }
   .doc-tag { text-align: right; font-weight: bold; font-size: 14px; }
-  .title { text-align: center; font-weight: bold; font-size: 17px; line-height: 1.7; margin: 8px 0; }
-  .title-main { font-size: 19px; }
+  .title { text-align: center; font-weight: bold; line-height: 1.7; margin: 6px 0 10px; }
+  .title-main { font-size: 16.5px; }
+  .title-sub { font-size: 18px; }
   .filler { margin: 14px 0 18px; }
   .section { font-weight: bold; margin: 14px 0 6px; }
   .fill-line { border-bottom: 1px solid #000; display: inline-block; min-width: 60px; padding: 0 6px; text-align: center; font-weight: bold; }
   .big-fill { display: block; border-bottom: 1px solid #000; min-height: 28px; padding: 4px 8px; margin: 6px 0; font-weight: bold; font-size: 16px; letter-spacing: 1px; }
-  .note { font-size: 12.5px; line-height: 1.7; margin-top: 4px; }
-  .note ol { padding-left: 20px; margin: 4px 0; }
-  .note li { margin-bottom: 3px; }
-  .sign-area { margin-top: 24px; line-height: 2.6; }
+  .note-box { border: 1px solid #000; padding: 8px 14px; margin-top: 12px; font-size: 13px; line-height: 1.8; }
+  .note-1 { margin: 2px 0; }
+  .note-sub { padding-left: 1.8em; text-indent: -1.6em; margin: 2px 0; }
+  .sign-area { margin-top: 22px; line-height: 2.8; }
   .sign-line { border-bottom: 1px solid #000; display: inline-block; min-width: 280px; }
-  .small { font-size: 13px; }
+  .small { font-size: 13.5px; }
+  .foot { text-align: center; margin-top: 26px; font-size: 13px; }
   @media print { .no-print { display: none; } }
   .no-print { position: fixed; top: 12px; right: 12px; }
   .no-print button { font-size: 14px; padding: 8px 18px; margin-left: 6px; cursor: pointer;
@@ -2148,47 +2150,48 @@ function printApplication(ownerId) {
     <button onclick="window.close()" style="background:#9FA0A0;">關閉</button>
   </div>
 
+  <div class="doc-tag">附件三</div>
   <div class="title">
-    <div class="title-main">擬訂${caseName}都市更新權利變換計畫案</div>
-    <div>更新後分配位置申請書</div>
+    <div class="title-main">「擬訂新北市土城區清水段103地號1筆土地都市更新事業計畫暨權利變換計畫案」</div>
+    <div class="title-sub">更新後分配位置申請書</div>
   </div>
 
   <div class="filler">填寫人：<span class="fill-line" style="min-width:200px;">${owner.name||''}</span></div>
 
   <div class="small">本人願意參與分配，茲就實施者所提供更新後各分配單元面積位置對照表及更新後配置圖、各樓層平面圖，申請分配下列單元及車位位置。</div>
 
-  <div class="section">一、分配單元部分：</div>
-  <div class="small">本人申請分配單元之「單元編號」為：（舉例如選取3樓A1戶，單元編號請填寫 3F-A1）</div>
+  <div class="section">一、分配單元部份：</div>
+  <div class="small">本人申請分配單元之「單元編號」為：（舉例：如選取5樓B8戶，則單元編號請填寫「5F-B8」）</div>
   <div class="big-fill">${unitNos.join('、 ')}</div>
   <div>等，共 <span class="fill-line">${unitNos.length}</span> 個單元。</div>
 
-  <div class="section">二、汽車停車位部分：</div>
-  <div class="small">本人共申請分配汽車停車位 <span class="fill-line">${parkNos.length}</span> 位，其「車位位置代碼」為：（舉例如選取地下二層234號，請填寫 B2-234）</div>
+  <div class="section">二、汽車停車位部份：</div>
+  <div class="small">本人共申請分配汽車停車位 <span class="fill-line">${parkNos.length}</span> 位，其「車位位置代碼」為：（舉例：如選取地下三樓編號160之車位，則車位編號請填寫「B3-160」）</div>
   <div class="big-fill">${parkNos.join('、 ')}</div>
   <div>等，共 <span class="fill-line">${parkNos.length}</span> 部。</div>
 
-  <div class="note">
+  <div class="note-box">
     說明：
-    <ol>
-      <li>若有區分所有權人同時申請同一分配單元，則以公開抽籤決定之。</li>
-      <li>實際分配價值為分配單元與停車位加總，若較應分配價值為多時，需補繳差額價金；若較應分配價值為少時，則領取差額價金。其餘依本案選配原則辦理。</li>
-      <li>以上分配單元及停車位之面積及位置以都市更新審議委員會通過版本為準。</li>
-    </ol>
+    <div class="note-1">1. 權利變換調查與申請分配</div>
+    <div class="note-sub">（１）若有區分所有權人同時申請同一分配單元，則以公開抽籤決定之。</div>
+    <div class="note-sub">（２）實際分配價值為分配單元與停車位加總，若較應分配價值為多時，需依實際分配價值核計，補繳差額價金；若較應分配價值為少時，則依實際分配價值核計，領取差額價金。實際選配後找補以不超過１個分配單元為原則。</div>
+    <div class="note-1">2. 本表請於民國115年7月31日（星期五）下午5時前以雙掛號郵寄或親自送達漢吉建設股份有限公司(新北市中和區中山路二段299號1樓)，未於規定期限內表達意願者，基於保障原住戶重回更新地區居住之權益，並減少實施都市更新事業時之阻力，視同願意參與權利變換分配，實施者將依都市更新權利變換實施辦法第17條規定，以公開抽籤方式分配之。預定公開抽籤日之時間訂為民國115年8月12日（星期三）下午6時30分，地點為新北市土城區清水國小慈愛樓5F視聽教室(新北市土城區金城路二段356號)。</div>
+    <div class="note-1">3. 以上分配單元及停車位之面積及位置以都市更新審議委員會通過版本為準</div>
   </div>
 
   <div class="sign-area">
-    <div>所有權人：<span class="sign-line"></span> (簽名及蓋章)</div>
+    <div>所有權人：<span class="sign-line"></span> （簽名及蓋章）</div>
     <div>身分證字號(統一編號)：<span class="sign-line" style="min-width:240px;"></span></div>
     <div>聯絡地址(營業所在地)：<span class="sign-line" style="min-width:240px;">${owner.address||''}</span></div>
     <div>聯絡電話：<span class="sign-line" style="min-width:240px;">${owner.phone||''}</span></div>
-    <div style="margin-top:10px;">中華民國 <span class="fill-line">${rocYear}</span> 年 <span class="fill-line">　</span> 月 <span class="fill-line">　</span> 日</div>
+    <div style="margin-top:10px;">中　華　民　國　<span class="fill-line">${rocYear}</span> 年 <span class="fill-line">　</span> 月 <span class="fill-line">　</span> 日</div>
   </div>
+
+  <div class="foot">附件三 1/1</div>
 </body>
 </html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  if (win) { win.document.open(); win.document.write(html); win.document.close(); }
 }
 
 // ============================================================
