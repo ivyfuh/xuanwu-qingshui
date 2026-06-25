@@ -672,9 +672,10 @@ function renderOwnerList() {
   const selectedCount = participating.filter(o => {
     const s = selOf(o.owner_id); return s && s.status==='confirmed';
   }).length;
-  const unselectedCount = participating.filter(o => {
-    const s = selOf(o.owner_id); return !s || s.status==='draft';
-  }).length;
+  const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false||o.participate==='post')).length;
+  // 尚未選屋 = 地主總數 − 已完成 − 不參與；確保「總數 = 已完成 + 尚未 + 不參與」永遠兜得起來
+  // （草稿、需改選、未登記等都歸入「尚未」，避免有人落在三個數字之外）
+  const unselectedCount = all.length - selectedCount - nonpartCount;
   const incompleteCount = all.filter(o => {
     const s = selOf(o.owner_id);
     const np = (o.participate==='false'||o.participate===false||o.participate==='post');
@@ -682,7 +683,6 @@ function renderOwnerList() {
     const p = progOf(o.owner_id);
     return p.done < p.total;
   }).length;
-  const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false||o.participate==='post')).length;
 
   document.getElementById('st-total').textContent      = all.length;
   document.getElementById('st-selected').textContent   = selectedCount;
@@ -746,10 +746,24 @@ function renderOwnerList() {
       if (allTags.length) selLine = `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;">${allTags.join('')}</div>`;
     }
 
-    // 不參與權變的狀態標籤特殊處理
-    const statusBadge = nonpart
-      ? `<span class="badge" style="background:var(--cs);color:var(--tt);">${o.participate==='post'?'不參與(後)':'不參與(前)'}</span>`
-      : `<span class="badge ${stMap[st]||''}">${stLabel[st]||st}</span>`;
+    // 找補（清單顯示）：選配總值 − 更新後權利價值
+    const settleVal = (sel && !nonpart) ? ((Number(sel.total_value)||0) - (Number(o.rights_value)||0)) : null;
+    const settleLine = settleVal == null ? '' :
+      `<div style="font-size:10px;margin-top:2px;color:${settleVal>0?'var(--red-text)':settleVal<0?'var(--green-text)':'var(--tt)'};">找補 ${settleVal>0?'補 NT$'+fmt(settleVal):settleVal<0?'退 NT$'+fmt(-settleVal):'0'}</div>`;
+
+    // 狀態標籤：不參與另外處理；其餘可「同時」顯示超選＋重複等多個標籤
+    let statusBadge;
+    if (nonpart) {
+      statusBadge = `<span class="badge" style="background:var(--cs);color:var(--tt);">${o.participate==='post'?'不參與(後)':'不參與(前)'}</span>`;
+    } else {
+      const flags = [];
+      if (sel?.is_over_limit) flags.push('over');
+      if (sel && isDup(sel)) flags.push('dup');
+      if (sel?.status==='draft') flags.push('draft');
+      if (sel?.status==='needs_reselect') flags.push('resel');
+      if (!flags.length) flags.push(sel ? 'ok' : 'none');
+      statusBadge = flags.map(k => `<span class="badge ${stMap[k]||''}">${stLabel[k]||k}</span>`).join('');
+    }
 
     return `<div style="display:grid;grid-template-columns:56px 1fr 80px 52px 52px 28px;
       align-items:start;padding:10px 14px;border-bottom:0.5px solid var(--bt);
@@ -758,9 +772,9 @@ function renderOwnerList() {
       <div style="font-size:12px;color:var(--tt);padding-top:2px;">${o.serial_no||''}</div>
       <div>
         <div style="font-weight:500;">${o.name||''}${(o.has_agent==='true'||o.has_agent===true)?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;">代理</span>':''}</div>
-        ${selLine}
+        ${selLine}${settleLine}
       </div>
-      <div style="padding-top:2px;">${statusBadge}</div>
+      <div style="padding-top:2px;display:flex;flex-direction:column;gap:3px;align-items:flex-start;">${statusBadge}</div>
       <div>${physBadge}</div>
       <div>${archBadge}</div>
       <div style="padding-top:2px;"><i class="ti ti-chevron-right" style="color:var(--tt);"></i></div>
