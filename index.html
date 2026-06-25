@@ -167,6 +167,8 @@ tr.selected td{background:#EDF5FB;}
         <div class="flex items-center gap-8 mb-12" style="flex-wrap:wrap;">
           <input type="text" id="search" placeholder="搜尋姓名 / 編號…"
             style="width:200px;" oninput="filterOwners()">
+          <button class="btn-secondary text-sm" onclick="refreshData(true)" title="重新載入最新資料（多人同時選屋時用）"><i class="ti ti-refresh"></i> 重新整理</button>
+          <span id="auto-refresh-time" class="text-xs text-muted"></span>
         </div>
 
         <!-- Filter chips -->
@@ -1767,6 +1769,7 @@ async function doExport() {
 //  NAVIGATION
 // ============================================================
 function navTo(view) {
+  STATE.view = view;
   // 切換頁籤時自動收掉右側地主明細面板
   const dp = document.getElementById('detail');
   if (dp) dp.style.display = 'none';
@@ -1785,6 +1788,33 @@ function navTo(view) {
   if (view === 'draw') loadLotteryList();
   if (view === 'settings') renderSettings();
 }
+
+// ── 多人共用：自動／手動重新整理最新資料（選屋期間用）──
+let _refreshing = false;
+async function refreshData(force) {
+  if (_refreshing) return;
+  if (!USER?.token) return;                              // 未登入不刷
+  if (document.getElementById('modal-overlay')?.classList.contains('open')) return;  // 編輯中不打擾
+  if (!force && document.hidden) return;                 // 背景分頁不刷
+  _refreshing = true;
+  try {
+    await Promise.all([loadOwners(), loadSelections(), loadDocStatus()]);
+    const v = STATE.view || 'list';
+    if (v === 'list') renderOwnerList();
+    else if (v === 'lottery') loadDashboard();
+    else if (v === 'draw') loadLotteryList();
+    if (STATE.selected_owner_id && document.getElementById('detail')?.style.display !== 'none') {
+      renderOwnerDetail(STATE.selected_owner_id);
+    }
+    const t = document.getElementById('auto-refresh-time');
+    if (t) t.textContent = '已更新 ' + new Date().toLocaleTimeString('zh-TW');
+  } finally { _refreshing = false; }
+}
+// 每 15 秒自動重新整理（僅清單／總覽／抽籤頁、且非編輯中、分頁在前景）
+setInterval(() => {
+  const v = STATE.view || 'list';
+  if (v === 'list' || v === 'lottery' || v === 'draw') refreshData(false);
+}, 15000);
 
 // ============================================================
 //  案件設定 — 地主顯示頁五階段進度
@@ -2360,6 +2390,16 @@ function toggleMergeMember(ownerId) {
 }
 
 // 改某人金額
+// 出資分數：出資額 ÷ 合併組總額，能整除就顯示乾淨分數（如 1/3），否則顯示金額分數
+function mergeFrac(amt, total) {
+  amt = Math.round(Number(amt)||0); total = Math.round(Number(total)||0);
+  if (!total) return '—';
+  const gcd = (a,b) => b ? gcd(b, a%b) : a;
+  const g = gcd(amt, total) || 1;
+  const n = amt/g, d = total/g;
+  return d <= 30 ? `${n}/${d}` : `${fmt(amt)}/${fmt(total)}`;
+}
+
 function setMergeAmount(ownerId, val) {
   MERGE_STATE.invest[ownerId] = Math.max(0, Math.round(Number(val)||0));
   MERGE_STATE.manualInvest = true;  // 承辦手動改過，停止自動分攤
@@ -2447,15 +2487,12 @@ function recalcMerge(skipAmountRender) {
         const amt = MERGE_STATE.invest[oid] || 0;
         const pct = investTotal > 0 ? (amt/investTotal*100) : 0;
         const overRemain = amt > (u.remaining||0) + 1;
-        return `<div style="display:grid;grid-template-columns:1fr 110px 70px;gap:6px;align-items:center;margin-bottom:5px;">
+        return `<div style="display:grid;grid-template-columns:1fr 110px 86px;gap:6px;align-items:center;margin-bottom:5px;">
           <span style="font-size:12px;">${u.name||oid}
             <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(u.remaining||0)}）</span></span>
           <input type="number" value="${amt}" oninput="setMergeAmount('${oid}', this.value)"
             style="font-size:12px;padding:4px 8px;${overRemain?'border-color:var(--red);':''}" placeholder="金額">
-          <div style="display:flex;align-items:center;gap:2px;">
-            <input type="number" value="${pct.toFixed(1)}" oninput="setMergeRatio('${oid}', this.value)"
-              style="font-size:12px;padding:4px 4px;width:50px;" step="0.1"><span class="text-xs text-muted">%</span>
-          </div>
+          <span class="merge-frac" title="出資佔合併組總額的分數" style="text-align:right;font-size:12px;color:var(--tp);font-weight:500;">${mergeFrac(amt, investTotal)}</span>
         </div>`;
       }).join('');
     }
@@ -2465,11 +2502,11 @@ function recalcMerge(skipAmountRender) {
       const active = document.activeElement;
       members.forEach((oid, i) => {
         const amt = MERGE_STATE.invest[oid]||0;
-        const pct = investTotal>0 ? (amt/investTotal*100) : 0;
         const inputs = rowsEl.children[i]?.querySelectorAll('input');
         // 不更新使用者正在編輯的框，避免游標跳走
         if (inputs && inputs[0] && inputs[0] !== active) inputs[0].value = amt;
-        if (inputs && inputs[1] && inputs[1] !== active) inputs[1].value = pct.toFixed(1);
+        const frac = rowsEl.children[i]?.querySelector('.merge-frac');
+        if (frac) frac.textContent = mergeFrac(amt, investTotal);
       });
     }
   }
