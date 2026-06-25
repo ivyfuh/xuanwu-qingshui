@@ -3141,6 +3141,34 @@ async function loadLotteryList() {
     return;
   }
 
+  // ── #16 以「人」為單位的重複名單（戶別＋車位合看，方便打電話）──
+  const personMap = {};
+  const addP = (oid, kind, code) => {
+    if (!personMap[oid]) personMap[oid] = { units: [], parks: [] };
+    personMap[oid][kind].push(code);
+  };
+  dupUnits.forEach(([code, ids]) => ids.forEach(oid => addP(oid, 'units', code)));
+  dupParks.forEach(([code, ids]) => ids.forEach(oid => addP(oid, 'parks', code)));
+  const personRows = Object.keys(personMap).map(oid => {
+    const o = STATE.owners.find(x => x.owner_id == oid) || {};
+    return { name: o.name || oid, phone: o.phone || '', serial: o.serial_no || '',
+             units: personMap[oid].units, parks: personMap[oid].parks };
+  }).sort((a, b) => String(a.serial).padStart(8, '0').localeCompare(String(b.serial).padStart(8, '0')));
+  const colTpl = 'grid-template-columns:88px 118px 1fr 1fr;';
+  const personTable = `
+    <div class="card mb-16" style="border-left:3px solid var(--orange);">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;"><i class="ti ti-users"></i> 重複名單（以人為單位，共 ${personRows.length} 位）· 方便逐人聯絡</div>
+      <div style="display:grid;${colTpl}gap:6px;font-size:11px;color:var(--tt);padding:0 4px 6px;border-bottom:0.5px solid var(--bt);">
+        <div>地主</div><div>電話</div><div>重複戶別</div><div>重複車位</div>
+      </div>
+      ${personRows.map(p => `<div style="display:grid;${colTpl}gap:6px;font-size:12px;align-items:center;padding:6px 4px;border-bottom:0.5px solid var(--bt);">
+        <div style="font-weight:500;">${p.name}</div>
+        <div>${p.phone ? `<a href="tel:${p.phone}" style="color:var(--brand-text);text-decoration:none;">${p.phone}</a>` : '<span class="text-muted">—</span>'}</div>
+        <div style="color:var(--red-text);">${p.units.join('、') || '—'}</div>
+        <div style="color:var(--red-text);">${p.parks.join('、') || '—'}</div>
+      </div>`).join('')}
+    </div>`;
+
   const renderGroup = (label, dups, type) => dups.map(([code, ownerIds]) => {
     const owners = ownerIds.map(oid => {
       const o = STATE.owners.find(x => x.owner_id == oid);
@@ -3187,6 +3215,8 @@ async function loadLotteryList() {
   }).join('');
 
   el.innerHTML = `
+    ${personTable}
+    <div style="font-size:12px;font-weight:600;color:var(--ts);margin:16px 0 8px;"><i class="ti ti-list-details"></i> 重複明細（以戶／車位為單位，抽籤登錄）</div>
     ${dupUnits.length ? `<div style="font-size:12px;font-weight:500;color:var(--ts);margin-bottom:8px;">戶別重複（${dupUnits.length} 組）</div>
     ${renderGroup('戶別', dupUnits, 'unit')}` : ''}
     ${dupParks.length ? `<div style="font-size:12px;font-weight:500;color:var(--ts);margin-bottom:8px;margin-top:16px;">車位重複（${dupParks.length} 組）</div>
