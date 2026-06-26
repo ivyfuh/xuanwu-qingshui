@@ -2137,24 +2137,24 @@ async function printApplication(ownerId) {
 <meta charset="UTF-8">
 <title>更新後分配位置申請書 - ${owner.name}</title>
 <style>
-  @page { size: A4; margin: 2.2cm 2.4cm; }
+  @page { size: A4; margin: 1.4cm 1.8cm; }
   * { box-sizing: border-box; }
-  body { font-family: "DFKai-SB","BiauKai","標楷體","Noto Serif TC",serif; font-size: 15px; line-height: 1.9; color: #000; }
-  .doc-tag { text-align: right; font-weight: bold; font-size: 14px; }
-  .title { text-align: center; font-weight: bold; line-height: 1.7; margin: 6px 0 10px; }
-  .title-main { font-size: 16.5px; }
-  .title-sub { font-size: 18px; }
-  .filler { margin: 14px 0 18px; }
-  .section { font-weight: bold; margin: 14px 0 6px; }
-  .fill-line { border-bottom: 1px solid #000; display: inline-block; min-width: 60px; padding: 0 6px; text-align: center; font-weight: bold; }
-  .big-fill { display: block; border-bottom: 1px solid #000; min-height: 28px; padding: 4px 8px; margin: 6px 0; font-weight: bold; font-size: 16px; letter-spacing: 1px; }
-  .note-box { border: 1px solid #000; padding: 8px 14px; margin-top: 12px; font-size: 13px; line-height: 1.8; }
-  .note-1 { margin: 2px 0; }
-  .note-sub { padding-left: 1.8em; text-indent: -1.6em; margin: 2px 0; }
-  .sign-area { margin-top: 22px; line-height: 2.8; }
+  body { font-family: "DFKai-SB","BiauKai","標楷體","Noto Serif TC",serif; font-size: 14px; line-height: 1.55; color: #000; }
+  .doc-tag { text-align: right; font-weight: bold; font-size: 13px; }
+  .title { text-align: center; font-weight: bold; line-height: 1.5; margin: 2px 0 8px; }
+  .title-main { font-size: 15.5px; }
+  .title-sub { font-size: 17px; }
+  .filler { margin: 8px 0 10px; }
+  .section { font-weight: bold; margin: 9px 0 3px; }
+  .fill-line { border-bottom: 1px solid #000; display: inline-block; min-width: 48px; padding: 0 6px; text-align: center; font-weight: bold; }
+  .big-fill { display: block; border-bottom: 1px solid #000; min-height: 22px; padding: 3px 8px; margin: 4px 0; font-weight: bold; font-size: 15px; letter-spacing: 1px; }
+  .note-box { border: 1px solid #000; padding: 6px 12px; margin-top: 8px; font-size: 12.5px; line-height: 1.5; break-inside: avoid; }
+  .note-1 { margin: 1px 0; }
+  .note-sub { padding-left: 1.8em; text-indent: -1.6em; margin: 1px 0; }
+  .sign-area { margin-top: 14px; line-height: 2.2; break-inside: avoid; }
   .sign-line { border-bottom: 1px solid #000; display: inline-block; min-width: 280px; }
-  .small { font-size: 13.5px; }
-  .foot { text-align: center; margin-top: 26px; font-size: 13px; }
+  .small { font-size: 13px; }
+  .foot { text-align: center; margin-top: 14px; font-size: 13px; }
   @media print { .no-print { display: none; } }
   .no-print { position: fixed; top: 12px; right: 12px; }
   .no-print button { font-size: 14px; padding: 8px 18px; margin-left: 6px; cursor: pointer;
