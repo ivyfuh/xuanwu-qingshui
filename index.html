@@ -2139,7 +2139,7 @@ async function printApplication(ownerId) {
 <style>
   @page { size: A4; margin: 1.4cm 1.8cm; }
   * { box-sizing: border-box; }
-  body { font-family: "DFKai-SB","BiauKai","標楷體","Noto Serif TC",serif; font-size: 14px; line-height: 1.55; color: #000; }
+  body { font-family: "DFKai-SB","BiauKai","標楷體","Noto Serif TC",serif; font-size: 14.5px; line-height: 1.7; color: #000; }
   .doc-tag { text-align: right; font-weight: bold; font-size: 13px; }
   .title { text-align: center; font-weight: bold; line-height: 1.5; margin: 2px 0 8px; }
   .title-main { font-size: 15.5px; }
@@ -2154,6 +2154,7 @@ async function printApplication(ownerId) {
   .sign-area { margin-top: 14px; line-height: 2.2; break-inside: avoid; }
   .sign-line { border-bottom: 1px solid #000; display: inline-block; min-width: 280px; }
   .small { font-size: 13px; }
+  .sub { padding-left: 1.9em; }
   .foot { text-align: center; margin-top: 14px; font-size: 13px; }
   @media print { .no-print { display: none; } }
   .no-print { position: fixed; top: 12px; right: 12px; }
@@ -2178,12 +2179,12 @@ async function printApplication(ownerId) {
   <div class="small">本人願意參與分配，茲就實施者所提供更新後各分配單元面積位置對照表及更新後配置圖、各樓層平面圖，申請分配下列單元及車位位置。</div>
 
   <div class="section">一、分配單元部份：</div>
-  <div class="small">本人申請分配單元之「單元編號」為：（舉例：如選取5樓B8戶，則單元編號請填寫「5F-B8」）</div>
+  <div class="small sub">本人申請分配單元之「單元編號」為：（舉例：如選取5樓B8戶，則單元編號請填寫「5F-B8」）</div>
   <div class="big-fill">${unitNos.join('、 ')}</div>
   <div>等，共 <span class="fill-line">${unitNos.length}</span> 個單元。</div>
 
   <div class="section">二、汽車停車位部份：</div>
-  <div class="small">本人共申請分配汽車停車位 <span class="fill-line">${parkNos.length}</span> 位，其「車位位置代碼」為：（舉例：如選取地下三樓編號160之車位，則車位編號請填寫「B3-160」）</div>
+  <div class="small sub">本人共申請分配汽車停車位 <span class="fill-line">${parkNos.length}</span> 位，其「車位位置代碼」為：（舉例：如選取地下三樓編號160之車位，則車位編號請填寫「B3-160」）</div>
   <div class="big-fill">${parkNos.join('、 ')}</div>
   <div>等，共 <span class="fill-line">${parkNos.length}</span> 部。</div>
 
