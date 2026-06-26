@@ -344,17 +344,6 @@ body { background: var(--ct); }
   <!-- Timeline（五階段，由後台案件設定驅動） -->
   <div class="timeline" id="timeline"></div>
 
-  <!-- #14 相關文件（委託書、選屋圖冊）— 先放按鈕，實際檔案之後接上 -->
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
-    <button onclick="alert('委託書檔案準備中，敬請期待。如需紙本請洽漢皇建設。')"
-      style="display:inline-flex;align-items:center;gap:6px;background:var(--cp);border:0.5px solid var(--bs);border-radius:var(--rm);padding:10px 16px;font-size:13px;cursor:pointer;color:var(--tp);">
-      <i class="ti ti-file-text"></i> 委託書下載
-    </button>
-    <button onclick="alert('選屋圖冊準備中，敬請期待。如需紙本請洽漢皇建設。')"
-      style="display:inline-flex;align-items:center;gap:6px;background:var(--cp);border:0.5px solid var(--bs);border-radius:var(--rm);padding:10px 16px;font-size:13px;cursor:pointer;color:var(--tp);">
-      <i class="ti ti-book"></i> 選屋圖冊
-    </button>
-  </div>
 
   <!-- Selection grid + panel -->
   <div class="card mb-16" style="padding:0;overflow:hidden;">
@@ -389,31 +378,6 @@ body { background: var(--ct); }
         <div id="unit-panel-inner"></div>
       </div>
     </div>
-  </div>
-
-  <!-- Documents -->
-  <div style="font-size:14px;font-weight:500;margin-bottom:10px;"><i class="ti ti-folder-open"></i> 文件下載中心</div>
-  <div class="doc-grid">
-    <a class="doc-card" id="doc-delegation" href="#" onclick="return false;">
-      <div class="doc-icon" style="background:var(--red-bg);"><i class="ti ti-file-text" style="color:var(--red-text);"></i></div>
-      <div><div style="font-size:13px;font-weight:500;">選屋委託書</div><div class="text-xs text-muted">PDF · 填寫後請親送</div></div>
-      <i class="ti ti-download" style="color:var(--tt);margin-left:auto;"></i>
-    </a>
-    <a class="doc-card" id="doc-consent" href="#" onclick="return false;">
-      <div class="doc-icon" style="background:#E8EDF0;"><i class="ti ti-file-text" style="color:#3D4D56;"></i></div>
-      <div><div style="font-size:13px;font-weight:500;">地主同意書範本</div><div class="text-xs text-muted">PDF · 參考用</div></div>
-      <i class="ti ti-download" style="color:var(--tt);margin-left:auto;"></i>
-    </a>
-    <a class="doc-card" id="doc-booklet" href="#" onclick="return false;">
-      <div class="doc-icon" style="background:var(--green-bg);"><i class="ti ti-book" style="color:var(--green-text);"></i></div>
-      <div><div style="font-size:13px;font-weight:500;">選屋圖冊（全棟）</div><div class="text-xs text-muted">PDF</div></div>
-      <i class="ti ti-download" style="color:var(--tt);margin-left:auto;"></i>
-    </a>
-    <a class="doc-card" id="doc-plan" href="#" onclick="return false;">
-      <div class="doc-icon" style="background:#F1EFE8;"><i class="ti ti-file-description" style="color:#444;"></i></div>
-      <div><div style="font-size:13px;font-weight:500;">都更事業計畫摘要</div><div class="text-xs text-muted">PDF · 官方核定版</div></div>
-      <i class="ti ti-download" style="color:var(--tt);margin-left:auto;"></i>
-    </a>
   </div>
 
   <!-- Identity verification -->
