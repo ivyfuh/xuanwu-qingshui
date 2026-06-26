@@ -2152,7 +2152,7 @@ async function printApplication(ownerId) {
   .note-1 { margin: 1px 0; }
   .note-sub { padding-left: 1.8em; text-indent: -1.6em; margin: 1px 0; }
   .sign-area { margin-top: 14px; line-height: 2.2; break-inside: avoid; }
-  .sign-line { border-bottom: 1px solid #000; display: inline-block; min-width: 280px; }
+  .sign-line { display: inline-block; min-width: 280px; }
   .small { font-size: 13px; }
   .sub { padding-left: 1.9em; }
   .foot { text-align: center; margin-top: 14px; font-size: 13px; }
@@ -2202,7 +2202,7 @@ async function printApplication(ownerId) {
     <div>身分證字號(統一編號)：<span class="sign-line" style="min-width:240px;"></span></div>
     <div>聯絡地址(營業所在地)：<span class="sign-line" style="min-width:240px;">${owner.address||''}</span></div>
     <div>聯絡電話：<span class="sign-line" style="min-width:240px;">${owner.phone||''}</span></div>
-    <div style="margin-top:10px;">中　華　民　國　<span class="fill-line">${rocYear}</span> 年 <span class="fill-line">　</span> 月 <span class="fill-line">　</span> 日</div>
+    <div style="margin-top:10px;">中　華　民　國　　　　　年　　　　月　　　　日</div>
   </div>
 
   <div class="foot">附件三 1/1</div>
