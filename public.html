@@ -344,6 +344,18 @@ body { background: var(--ct); }
   <!-- Timeline（五階段，由後台案件設定驅動） -->
   <div class="timeline" id="timeline"></div>
 
+  <!-- #14 相關文件（委託書、選屋圖冊）— 先放按鈕，實際檔案之後接上 -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+    <button onclick="alert('委託書檔案準備中，敬請期待。如需紙本請洽漢皇建設。')"
+      style="display:inline-flex;align-items:center;gap:6px;background:var(--cp);border:0.5px solid var(--bs);border-radius:var(--rm);padding:10px 16px;font-size:13px;cursor:pointer;color:var(--tp);">
+      <i class="ti ti-file-text"></i> 委託書下載
+    </button>
+    <button onclick="alert('選屋圖冊準備中，敬請期待。如需紙本請洽漢皇建設。')"
+      style="display:inline-flex;align-items:center;gap:6px;background:var(--cp);border:0.5px solid var(--bs);border-radius:var(--rm);padding:10px 16px;font-size:13px;cursor:pointer;color:var(--tp);">
+      <i class="ti ti-book"></i> 選屋圖冊
+    </button>
+  </div>
+
   <!-- Selection grid + panel -->
   <div class="card mb-16" style="padding:0;overflow:hidden;">
     <div style="padding:14px 16px;border-bottom:0.5px solid var(--bt);">
@@ -868,6 +880,9 @@ async function doVerify() {
     const parks  = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
     const status = sel?.status || 'none';
     const stLabel = { confirmed:'正式', draft:'草稿', needs_reselect:'需改選', none:'未登記' };
+    const dupU = res.dup_units || [];
+    const dupP = res.dup_parks || [];
+    const hasDup = dupU.length || dupP.length;
 
     el.innerHTML = `<div style="background:var(--cp);border:1.5px solid #9FE1CB;border-radius:var(--rl);padding:16px;margin-top:10px;">
       <div class="flex items-center gap-8 mb-12">
@@ -894,8 +909,10 @@ async function doVerify() {
         </div>
       </div>
       ${units.length||parks.length ? `<div class="text-xs text-muted mb-4">已登記選配</div>
-        ${units.map(u=>`<div class="text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);">🏠 ${u}</div>`).join('')}
-        ${parks.map(p=>`<div class="text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);">🚗 ${p}</div>`).join('')}` : ''}
+        ${units.map(u=>{const d=dupU.indexOf(u)>=0;return `<div class="text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);${d?'color:var(--red-text);font-weight:500;':''}">🏠 ${u}${d?' ⚠ 與他人重複，需抽籤':''}</div>`;}).join('')}
+        ${parks.map(p=>{const d=dupP.indexOf(p)>=0;return `<div class="text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);${d?'color:var(--red-text);font-weight:500;':''}">🚗 ${p}${d?' ⚠ 與他人重複，需抽籤':''}</div>`;}).join('')}` : ''}
+      ${hasDup ? `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">
+        <i class="ti ti-alert-circle"></i> 您選的${dupU.length?` ${dupU.join('、')}（戶別）`:''}${dupP.length?` ${dupP.join('、')}（車位）`:''} 與其他地主重複，將以公開抽籤決定最終分配，請持續關注公告。</div>` : ''}
       ${status === 'none' ? `<div style="background:var(--orange-bg);color:var(--orange-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">
         您尚未完成選配，請聯絡漢皇建設辦理選配作業。</div>` : ''}
       ${status === 'needs_reselect' ? `<div style="background:#E8EDF0;color:#3D4D56;padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">

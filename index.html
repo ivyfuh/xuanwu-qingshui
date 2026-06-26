@@ -1115,6 +1115,10 @@ function openSelectionModal(ownerId) {
       </div>
     </div>
     <div class="mb-12">
+      <div class="field-label">身分證字號（供前台地主以身分證查詢；儲存時自動加密，不留明碼）</div>
+      <input type="text" id="sel-idnum" value="" placeholder="例：A123456789（已建檔者可留空）">
+    </div>
+    <div class="mb-12">
       <div class="field-label">已選戶別（可用簡寫：03a2 → 3F-A2，逗號分隔）</div>
       <input type="text" id="sel-units" value="${unitNos.join(',')}" placeholder="例：03a2,21a1 或 3F-A2"
         oninput="previewCodes('sel-units','sel-units-preview','unit')">
@@ -1265,6 +1269,7 @@ async function submitSelection(ownerId, status) {
   const reason = document.getElementById('sel-reason')?.value || '';
   const phone   = document.getElementById('sel-phone')?.value || '';
   const address = document.getElementById('sel-address')?.value || '';
+  const idnum   = document.getElementById('sel-idnum')?.value.trim() || '';
   const btn = document.querySelector('#modal-box .btn-primary, #modal-box .btn-success');
   // ── 前端雙重擋關 ──
   // 1. 一戶一車：車位數不得超過戶別數
@@ -1298,12 +1303,13 @@ async function submitSelection(ownerId, status) {
     const owner = STATE.owners.find(o => o.owner_id == ownerId);
     const newPhone   = phone || owner?.phone || '';
     const newAddress = address || owner?.address || '';
-    if ((phone && phone !== owner?.phone) || (address && address !== owner?.address)) {
+    if ((phone && phone !== owner?.phone) || (address && address !== owner?.address) || idnum) {
       await apiPost('saveOwner', {
         owner_id: ownerId,
         name: owner?.name || '',
         phone: newPhone,
         address: newAddress,
+        ...(idnum ? { id_number: idnum } : {}),
         rights_value: owner?.rights_value || 0,
         handler: owner?.handler || '',
         participate: owner?.participate || 'true',
@@ -1601,6 +1607,15 @@ async function closeCall(logId, btnEl) {
     await apiPost('closeCallLog', { log_id: logId });
     loadCallLog().then(renderCallLog);
   } catch(e) { btnReset(btnEl); alert('結案失敗：' + e.message); }
+}
+
+async function deleteCall(logId, btnEl) {
+  if (!confirm('確定刪除這筆通話記錄？刪除後無法復原。')) return;
+  btnLoading(btnEl, '刪除中…');
+  try {
+    await apiPost('deleteCallLog', { log_id: logId });
+    loadCallLog().then(renderCallLog);
+  } catch(e) { btnReset(btnEl); alert('刪除失敗：' + e.message); }
 }
 
 // ============================================================
@@ -1965,6 +1980,8 @@ function renderCallLog() {
             <button class="btn-secondary" style="font-size:11px;padding:3px 8px;white-space:nowrap;color:var(--tt);"
               onclick="closeCall('${c.log_id}',this)">結案</button>
           </div>`:''}
+          <button class="btn-secondary" style="font-size:11px;padding:3px 8px;white-space:nowrap;color:var(--red-text);margin-top:4px;"
+            onclick="deleteCall('${c.log_id}',this)" title="刪除這筆通話記錄"><i class="ti ti-trash"></i> 刪除</button>
         </div>
       </div>
     </div>`;
