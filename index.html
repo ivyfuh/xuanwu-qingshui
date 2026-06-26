@@ -2198,11 +2198,11 @@ async function printApplication(ownerId) {
   </div>
 
   <div class="sign-area">
-    <div>所有權人：<span class="sign-line"></span> （簽名及蓋章）</div>
-    <div>身分證字號(統一編號)：<span class="sign-line" style="min-width:240px;"></span></div>
-    <div>聯絡地址(營業所在地)：<span class="sign-line" style="min-width:240px;">${owner.address||''}</span></div>
-    <div>聯絡電話：<span class="sign-line" style="min-width:240px;">${owner.phone||''}</span></div>
-    <div style="margin-top:10px;">中　華　民　國　　　　　年　　　　月　　　　日</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+      <span>所有權人：${owner.name||''}</span><span>（簽名及蓋章）</span>
+    </div>
+    <div style="margin-top:6px;">身分證字號(統一編號)：　　　聯絡地址(營業所在地)：${owner.address||''}　　　聯絡電話：${owner.phone||''}</div>
+    <div style="margin-top:10px;">中　　華　　民　　國　　　　　年　　　　月　　　　日</div>
   </div>
 
   <div class="foot">附件三 1/1</div>
