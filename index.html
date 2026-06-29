@@ -1204,8 +1204,8 @@ function openSelectionModal(ownerId) {
       </div>
     </div>
     <div class="mb-12">
-      <div class="field-label">身分證字號（供前台地主以身分證查詢；儲存時自動加密，不留明碼）</div>
-      <input type="text" id="sel-idnum" value="" placeholder="例：A123456789（已建檔者可留空）">
+      <div class="field-label">身分證字號（供前台地主查詢、列印申請書帶入；已建檔者會自動帶出）</div>
+      <input type="text" id="sel-idnum" value="${owner?.id_plain||''}" placeholder="例：A123456789">
     </div>
     ${mInfo.inMerge ? `
     <div class="mb-12" style="background:var(--brand-bg);border:0.5px solid var(--brand);border-radius:var(--rm);padding:10px 14px;font-size:12px;color:var(--brand-text);">
