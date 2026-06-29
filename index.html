@@ -2331,7 +2331,7 @@ async function printApplication(ownerId) {
     <button onclick="window.close()" style="background:#9FA0A0;">關閉</button>
   </div>
 
-  <div class="doc-tag">附件三</div>
+  <div class="doc-tag"><span style="border:1px solid #000;padding:1px 10px;">附件三</span></div>
   <div class="title">「擬訂新北市土城區清水段103地號1筆土地都市更新事業計畫暨權利變換計畫案」更新後分配位置申請書</div>
 
   <div class="filler">填寫人：<span class="fill-line" style="min-width:200px;">${owner.name||''}</span></div>
@@ -2346,13 +2346,16 @@ async function printApplication(ownerId) {
   <div class="section">二、汽車停車位部份：</div>
   <div class="small sub">本人共申請分配汽車停車位 <span class="fill-line">${parkNos.length}</span> 位，其「車位位置代碼」為：（舉例：如選取地下三樓編號160之車位，則車位編號請填寫「B3-160」）</div>
   <div class="big-fill">${parkNos.join('、 ')}</div>
+  <div>等，共 <span class="fill-line">${parkNos.length}</span> 部。</div>
 
+  <div class="note-box">
   <div class="note">說明：</div>
   <div class="note">1.權利變換調查與申請分配</div>
   <div class="note sub1">（1）若有區分所有權人同時申請同一分配單元，則以公開抽籤決定之。</div>
   <div class="note sub1">（2）實際分配價值為分配單元與停車位加總，若較應分配價值為多時，需依實際分配價值核計，補繳差額價金；若較應分配價值為少時，則依實際分配價值核計，領取差額價金。實際選配後找補以不超過1個分配單元為原則。</div>
   <div class="note">2.本表請於民國115年7月31日（星期五）下午5時前以雙掛號郵寄或親自送達漢吉建設股份有限公司(新北市中和區中山路二段299號1樓)，未於規定期限內表達意願者，基於保障原住戶重回更新地區居住之權益，並減少實施都市更新事業時之阻力，視同願意參與權利變換分配，實施者將依都市更新權利變換實施辦法第17條規定，以公開抽籤方式分配之。預定公開抽籤日之時間訂為民國115年8月12日(星期三)下午6時30分，地點為新北市土城區清水國小慈愛樓5F視聽教室(新北市土城區金城路二段356號)。</div>
   <div class="note">3.以上分配單元及停車位之面積及位置以都市更新審議委員會通過版本為準</div>
+  </div>
 
   <div class="sign-area">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;">
