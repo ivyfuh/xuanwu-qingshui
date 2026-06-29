@@ -2847,20 +2847,24 @@ function recalcMerge(skipAmountRender) {
   const hasMembers = members.length >= 2;
   const hasSelection = (units.length + parks.length) > 0;
 
-  // 各人找補：實際出資 − 個人剩餘（正=補差，負=退款）
+  // 各人找補（正確基準）：（個人選配 ＋ 所有合併投入）− 權利價值(100%)。100%內不補(甚至退)、超過100%才補
   const splitRows = members.map(oid => {
     const u = MERGE_STATE.usage[oid]||{};
-    const remaining = mergeRemainOf(oid);
-    const invested = MERGE_STATE.invest[oid]||0;
-    const pct = remainSum > 0 ? Math.round(remaining/remainSum*100) : 0;
-    const s = invested - remaining;  // 出資 − 剩餘 = 找補
-    const overPersonal = invested > remaining;  // remaining 已含110%額度，登記數值不可超過
+    const rights = Number(u.rights_value)||0;
+    const upper  = Number(u.upper_limit) || Math.round(rights*1.1);
+    const personal = Number(u.personal_used)||0;
+    const base = (MERGE_STATE.editingBaseInvest && MERGE_STATE.editingBaseInvest[oid]) || 0;
+    const otherMerge = Math.max(0, (Number(u.merge_invested)||0) - base);   // 其他合併組已投入
+    const thisInvest = MERGE_STATE.invest[oid]||0;                          // 本組目前投入
+    const totalUsed = personal + otherMerge + thisInvest;                  // 總實際分配價值
+    const s = totalUsed - rights;                                          // 找補 = 實際 − 權利價值
+    const overPersonal = totalUsed > upper + 1;                            // 超過 110% 上限
     return `<div class="flex justify-between text-xs" style="padding:3px 0;">
       <span>${u.name||oid}
-        <span class="text-muted">（剩餘${fmt(remaining)}，佔${pct}%，出${fmt(invested)}）</span>
-        ${overPersonal?`<span style="color:var(--red-text);"> ⚠ 超個人上限</span>`:''}
+        <span class="text-muted">（本組投入 ${fmt(thisInvest)}${personal>0?'・個人 '+fmt(personal):''}${otherMerge>0?'・他組 '+fmt(otherMerge):''}）</span>
+        ${overPersonal?`<span style="color:var(--red-text);"> ⚠ 超110%上限</span>`:''}
       </span>
-      <span style="color:${s>0?'var(--red-text)':s<0?'var(--green-text)':'var(--tt)'};">${s>0?'補 '+fmt(s):s<0?'退 '+fmt(-s):'—'}</span>
+      <span style="color:${s>0?'var(--red-text)':s<0?'var(--green-text)':'var(--tt)'};">找補 ${s>0?'補 '+fmt(s):s<0?'退 '+fmt(-s):'0'}</span>
     </div>`;
   }).join('');
 
