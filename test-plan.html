@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>清水段選屋系統 — 測試表</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{font-family:"Microsoft JhengHei","PingFang TC",sans-serif;color:#2c333a;line-height:1.55;max-width:900px;margin:0 auto;padding:18px 16px 80px;background:#f6f7f8;}
+  h1{font-size:21px;margin:0 0 2px;color:#3D4F58;}
+  .sub{color:#7a848c;font-size:13px;margin-bottom:14px;}
+  .pre{background:#FAEEDA;border:1px solid #EF9F27;border-radius:8px;padding:10px 14px;margin:12px 0;font-size:13px;color:#6a4a08;}
+  .pre b{color:#854F0B;}
+  .who{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0;}
+  .who button{border:1px solid #b9c2c8;background:#fff;color:#3D4F58;border-radius:18px;padding:6px 16px;font-size:14px;cursor:pointer;}
+  .who button.active{background:#5C7280;color:#fff;border-color:#5C7280;}
+  .sec{background:#fff;border-radius:10px;margin:12px 0;overflow:hidden;border:1px solid #e3e7ea;}
+  .sec-h{background:#5C7280;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+  .sec-h .nm{font-size:16px;font-weight:600;}
+  .sec-h .ar{font-size:12px;opacity:.85;margin-left:8px;font-weight:400;}
+  .sec-h .pg{font-size:13px;background:rgba(255,255,255,.2);padding:2px 10px;border-radius:12px;}
+  .sec-b{padding:4px 0;}
+  .item{padding:10px 14px;border-bottom:1px solid #eef1f2;}
+  .item:last-child{border-bottom:none;}
+  .item.done{background:#F1F8F4;}
+  .row{display:flex;gap:10px;align-items:flex-start;}
+  .cb{width:22px;height:22px;flex:0 0 22px;margin-top:2px;cursor:pointer;accent-color:#0F6E56;}
+  .txt{flex:1;}
+  .t{font-size:14.5px;font-weight:500;}
+  .e{font-size:12.5px;color:#0F6E56;margin-top:1px;}
+  .note{margin:8px 0 0 32px;}
+  .note input{width:100%;border:1px solid #ccd2d6;border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit;}
+  .note input::placeholder{color:#b3bbc0;}
+  .note input.has{border-color:#E24B4A;background:#FFF7F7;}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #dde1e4;padding:10px 16px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+  .bar .gp{font-size:13px;color:#3D4F58;}
+  .bar button{border:1px solid #5C7280;background:#5C7280;color:#fff;border-radius:7px;padding:8px 14px;font-size:13px;cursor:pointer;}
+  .bar button.ghost{background:#fff;color:#5C7280;}
+  .hide{display:none;}
+  .tag{display:inline-block;background:#E1F5EE;color:#0F6E56;border-radius:4px;padding:0 6px;font-size:11px;margin-left:6px;}
+  textarea#out{position:fixed;left:-9999px;}
+  .toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#2c333a;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<h1>清水段選屋系統 — 測試表</h1>
+<div class="sub">2026/06/29　·　勾選後自動儲存（存在本機瀏覽器）·　有問題寫在備註欄</div>
+
+<div class="pre">
+  <b>⚠ 測試前置</b>：①Code.gs 已<b>部署新版本</b> ②後台跑過 <b>resetAndSeedTest</b> ③前後台 <b>Ctrl+Shift+R</b> 強制重整。沒做這三步會測不準。
+</div>
+
+<div class="who" id="who"></div>
+
+<div id="plan"></div>
+
+<div class="bar">
+  <span class="gp" id="gp">整體進度 0 / 0</span>
+  <div style="display:flex;gap:8px;">
+    <button class="ghost" onclick="copyMine()">複製我的回報</button>
+    <button onclick="copyAll()">複製全部回報</button>
+  </div>
+</div>
+<textarea id="out"></textarea>
+<div class="toast" id="toast"></div>
+
+<script>
+const PLAN = [
+  { key:'yl', name:'曜霖', area:'合併選配（核心）', items:[
+    {t:'開「合併管理」看既有兩組', e:'顯示 2人 / 3人，不再是 0人合併'},
+    {t:'點進合併組看內容', e:'有各成員姓名、出資金額、找補'},
+    {t:'新建一組、選 2～3 人', e:'分子/分母預設按剩餘權值比例（非各 1/1）'},
+    {t:'把分數改成加總 ≠ 100%（如三人各 1/1）', e:'送出鈕鎖住、紅字「需湊到 100%」'},
+    {t:'按「↻ 自動分攤」', e:'回到按剩餘值的乾淨分數、加總=100%'},
+    {t:'儲存後重開該組', e:'成員、分數、戶別都正確帶回'},
+    {t:'列印合併成員的選屋單', e:'有印出合併分到的戶別/車位'},
+  ]},
+  { key:'bq', name:'柏權', area:'個人選配', items:[
+    {t:'正常選 2 戶 1 車送出', e:'總價、找補正確；狀態正式'},
+    {t:'故意選超過 110% 上限', e:'擋下不能送、提示超選金額'},
+    {t:'輸入打到別人選過的戶別', e:'即時顯示重複、重複幾戶'},
+    {t:'車位數多於戶別數', e:'擋下（一戶限一車）'},
+    {t:'對已選的人「改選」', e:'能改、歷程有記錄'},
+    {t:'存草稿 → 再正式登錄', e:'狀態正確轉換'},
+  ]},
+  { key:'yy', name:'壹壹', area:'不參與 + 抽籤', items:[
+    {t:'不參與地主明細按「改為參與選配」', e:'一鍵變回參與、可選屋'},
+    {t:'不參與地主開選配→取消勾選→選戶送出', e:'自動還原為參與'},
+    {t:'合併候選名單看不參與地主', e:'灰階、勾不動、標「需先改為參與」'},
+    {t:'把他改回參與後再看合併名單', e:'變成可勾選'},
+    {t:'兩人選同戶→抽籤、設落選者', e:'落選者狀態變「需改選」'},
+    {t:'抽籤管理按「重新整理」', e:'清單有反應、正常刷新'},
+  ]},
+  { key:'jy', name:'俊彥', area:'公開頁（地主視角）', items:[
+    {t:'打開公開頁看上方倒數橫幅', e:'天/時/分/秒在跳；現在約剩32天為品牌藍色'},
+    {t:'網址加 ?cd=5 預覽（剩5天）', e:'轉紅色、文案「把握時間」'},
+    {t:'網址加 ?cd=2 預覽（剩2天）', e:'紅色 + 整塊脈動閃爍'},
+    {t:'看下方五階段時間軸', e:'選屋期間 7/01-7/31、各階段狀態正確'},
+    {t:'用姓名+身分證查自己狀態', e:'查得到、顯示已選戶別；重複會提示'},
+    {t:'看公告區', e:'公告正常顯示'},
+  ]},
+  { key:'zx', name:'子瑄', area:'後台總覽 + 收件 + 把關', items:[
+    {t:'地主清單上方儀表板數字', e:'總數170；已完成+尚未=總數對得起來'},
+    {t:'只做合併、沒個人選配的地主明細', e:'使用率長條有顯示(非0%)、徽章「合併選配」'},
+    {t:'明細使用率長條刻度', e:'有 100% / 110% 兩條標線'},
+    {t:'收件勾「都更同意書 現場收到」', e:'同意比即時跟著變'},
+    {t:'文件「備註」標註缺漏', e:'存得起來、清單看得到'},
+    {t:'電話記錄：記錄通話 + 回撥', e:'不再 Unknown action、接通自動結案'},
+    {t:'彙整大家回報、判斷真bug', e:'整理問題清單'},
+  ]},
+];
+
+const LS = 'qs-test-v1';
+let state = {};
+try { state = JSON.parse(localStorage.getItem(LS) || '{}'); } catch(e) { state = {}; }
+let me = localStorage.getItem('qs-test-me') || '';
+
+function save(){ localStorage.setItem(LS, JSON.stringify(state)); }
+function st(id){ return state[id] || (state[id] = {c:false, n:''}); }
+
+function render(){
+  // 我是誰
+  document.getElementById('who').innerHTML =
+    '<span style="font-size:13px;color:#7a848c;align-self:center;">我是：</span>' +
+    PLAN.map(p => `<button class="${me===p.key?'active':''}" onclick="setMe('${p.key}')">${p.name}</button>`).join('') +
+    `<button class="${me===''?'active':''}" onclick="setMe('')">全部顯示</button>`;
+
+  // 各區
+  document.getElementById('plan').innerHTML = PLAN.map(p => {
+    const show = (me==='' || me===p.key);
+    const done = p.items.filter((_,i)=>st(p.key+'-'+i).c).length;
+    const rows = p.items.map((it,i)=>{
+      const id = p.key+'-'+i; const s = st(id);
+      return `<div class="item ${s.c?'done':''}">
+        <div class="row">
+          <input type="checkbox" class="cb" ${s.c?'checked':''} onchange="toggle('${id}',this.checked)">
+          <div class="txt">
+            <div class="t">${it.t}</div>
+            <div class="e">預期：${it.e}</div>
+          </div>
+        </div>
+        <div class="note"><input type="text" placeholder="有問題寫這裡（沒問題免填）"
+          value="${(s.n||'').replace(/"/g,'&quot;')}" class="${s.n?'has':''}"
+          oninput="note('${id}',this.value,this)"></div>
+      </div>`;
+    }).join('');
+    return `<div class="sec ${show?'':'hide'}" data-k="${p.key}">
+      <div class="sec-h" onclick="jump('${p.key}')">
+        <div><span class="nm">${p.name}</span><span class="ar">${p.area}</span></div>
+        <span class="pg" id="pg-${p.key}">${done} / ${p.items.length}</span>
+      </div>
+      <div class="sec-b">${rows}</div>
+    </div>`;
+  }).join('');
+  updateTotals();
+}
+
+function setMe(k){ me=k; localStorage.setItem('qs-test-me',k); render(); }
+function toggle(id,v){ st(id).c=v; save(); render(); }
+function note(id,v,el){ st(id).n=v; save(); el.className = v?'has':''; updateTotals(); }
+function jump(k){ if(me!==''&&me!==k){setMe(k);} }
+
+function updateTotals(){
+  let done=0,total=0;
+  PLAN.forEach(p=>{ p.items.forEach((_,i)=>{ total++; if(st(p.key+'-'+i).c)done++; });
+    const el=document.getElementById('pg-'+p.key);
+    if(el) el.textContent = p.items.filter((_,i)=>st(p.key+'-'+i).c).length+' / '+p.items.length;
+  });
+  document.getElementById('gp').textContent = `整體進度 ${done} / ${total}`;
+}
+
+function report(keys){
+  let out = '【清水段選屋系統 測試回報】\n';
+  PLAN.filter(p=>keys.includes(p.key)).forEach(p=>{
+    out += `\n■ ${p.name}（${p.area}）\n`;
+    p.items.forEach((it,i)=>{
+      const s=st(p.key+'-'+i);
+      out += `${s.c?'[V]':'[ ]'} ${it.t}`;
+      if(s.n) out += `　→ 問題：${s.n}`;
+      out += '\n';
+    });
+  });
+  return out;
+}
+function doCopy(text){
+  const ta=document.getElementById('out'); ta.value=text; ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  if(navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
+  toast('已複製，可貼到群組 / 傳給子瑄');
+}
+function copyMine(){ if(!me){ toast('請先在上方選「我是誰」'); return; } doCopy(report([me])); }
+function copyAll(){ doCopy(report(PLAN.map(p=>p.key))); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.className='toast show'; setTimeout(()=>t.className='toast',1800); }
+
+render();
+</script>
+</body>
+</html>
