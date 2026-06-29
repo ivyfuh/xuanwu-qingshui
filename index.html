@@ -815,6 +815,7 @@ function renderOwnerDetail(ownerId) {
   const total  = sel ? (Number(sel.total_value) || 0) : 0;
   const settle = total - rights;
   const pct    = limit > 0 ? Math.min(100, Math.round(total / limit * 100)) : 0;
+  const rightsPct = limit > 0 ? Math.round(rights / limit * 100) : 0;  // 權利價值(100%)在長條上的位置；上限(110%)=條尾
   const st     = ownerStatus(owner, sel);
   const barColor = total > limit ? 'var(--red)' : pct > 90 ? 'var(--orange)' : 'var(--green)';
 
@@ -854,11 +855,20 @@ function renderOwnerDetail(ownerId) {
     ${warn}
 
     <div class="mb-12">
-      <div class="text-xs text-muted mb-4">選配使用率</div>
+      <div class="text-xs text-muted mb-4">選配使用率　<span style="color:var(--tt);">（標線：100%=權利價值・110%=選配上限）</span></div>
       <div class="flex items-center gap-6 mb-4">
-        <div class="pbar-bg" style="flex:1;height:8px;"><div class="pbar-fill" style="width:${pct}%;background:${barColor};height:8px;"></div></div>
+        <div style="flex:1;position:relative;">
+          <div class="pbar-bg" style="height:9px;border-radius:5px;overflow:hidden;"><div class="pbar-fill" style="width:${pct}%;background:${barColor};height:9px;"></div></div>
+          <!-- 100%（權利價值）標線 -->
+          <div style="position:absolute;top:-3px;height:15px;width:2px;background:#333;left:calc(${rightsPct}% - 1px);"></div>
+          <div style="position:absolute;top:14px;left:${rightsPct}%;transform:translateX(-50%);font-size:9px;color:#333;white-space:nowrap;">100%</div>
+          <!-- 110%（選配上限）標線 = 條尾 -->
+          <div style="position:absolute;top:-3px;height:15px;width:2px;background:var(--red-text);right:0;"></div>
+          <div style="position:absolute;top:14px;right:0;font-size:9px;color:var(--red-text);white-space:nowrap;">110%</div>
+        </div>
         <span style="font-size:13px;font-weight:500;">${pct}%</span>
       </div>
+      <div style="height:12px;"></div>
       <div class="flex justify-between text-xs text-muted">
         <span>已選 NT$${fmt(total)}</span><span>上限 NT$${fmt(limit)}</span>
       </div>
@@ -1305,7 +1315,9 @@ async function submitSelection(ownerId, status) {
     const owner = STATE.owners.find(o => o.owner_id == ownerId);
     const newPhone   = phone || owner?.phone || '';
     const newAddress = address || owner?.address || '';
-    if ((phone && phone !== owner?.phone) || (address && address !== owner?.address) || idnum) {
+    // #25 原本是不參與權變、現在正常送出選配 → 一律還原成參與
+    const wasNonpart = owner && (owner.participate==='false' || owner.participate===false || owner.participate==='post');
+    if ((phone && phone !== owner?.phone) || (address && address !== owner?.address) || idnum || wasNonpart) {
       await apiPost('saveOwner', {
         owner_id: ownerId,
         name: owner?.name || '',
@@ -1314,10 +1326,11 @@ async function submitSelection(ownerId, status) {
         ...(idnum ? { id_number: idnum } : {}),
         rights_value: owner?.rights_value || 0,
         handler: owner?.handler || '',
-        participate: owner?.participate || 'true',
+        participate: 'true',
         has_agent: owner?.has_agent || 'false',
         agent_name: owner?.agent_name || '',
       });
+      if (owner) owner.participate = 'true';
     }
     // 立即更新 STATE.owners，讓列印可以即時拿到新資料（不等重新載入）
     if (owner) {
@@ -3260,7 +3273,7 @@ async function loadLotteryList() {
   dupParks.forEach(([code, ids]) => ids.forEach(oid => addP(oid, 'parks', code)));
   const personRows = Object.keys(personMap).map(oid => {
     const o = STATE.owners.find(x => x.owner_id == oid) || {};
-    return { name: o.name || oid, phone: o.phone || '', serial: o.serial_no || '',
+    return { name: o.name || ('未知地主(' + oid + ')'), phone: o.phone || '', serial: o.serial_no || '',
              units: personMap[oid].units, parks: personMap[oid].parks };
   }).sort((a, b) => String(a.serial).padStart(8, '0').localeCompare(String(b.serial).padStart(8, '0')));
   const colTpl = 'grid-template-columns:88px 118px 1fr 1fr;';
@@ -3283,7 +3296,7 @@ async function loadLotteryList() {
       const o = STATE.owners.find(x => x.owner_id == oid);
       const s = STATE.selections.find(x => x.owner_id == oid && x.status !== 'deleted');
       const st = s?.status || '';
-      return { oid, name: o?.name || oid, status: st };
+      return { oid, name: o?.name || ('未知地主(' + oid + ')'), status: st };
     });
 
     const hasWinner = owners.some(o => o.status === 'confirmed' &&

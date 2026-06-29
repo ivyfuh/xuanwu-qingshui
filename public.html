@@ -501,6 +501,17 @@ async function loadConfig() {
       const hLeft = hours % 24;
       document.getElementById('countdown-detail').textContent = days > 0 ? `還剩約 ${hLeft} 小時` : '今天截止';
     }
+  } else {
+    // #28 未設定截止日 → 顯示「籌備中」，不要整塊消失
+    const banner = document.getElementById('countdown-banner');
+    if (banner) {
+      banner.style.display = 'flex';
+      document.getElementById('countdown-days').textContent = '—';
+      document.getElementById('countdown-end-date').textContent = '日期近期公布';
+      document.getElementById('countdown-detail').textContent = '選屋期間籌備中';
+    }
+    const sb = document.getElementById('status-badge');
+    if (sb) sb.innerHTML = '<i class="ti ti-clock"></i> 選屋籌備中';
   }
   renderTimeline();
   // 多則公告
