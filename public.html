@@ -586,7 +586,12 @@ async function loadConfig() {
   const isTest = cfg.env === 'test';
   document.getElementById('test-banner').style.display = isTest ? '' : 'none';
   // Countdown（沒填 selection_end 就自動用「選屋期間」階段結束日）
-  const endDate = deriveSelectionEnd(cfg);
+  let endDate = deriveSelectionEnd(cfg);
+  // 預覽用：網址加 ?cd=5 → 假裝剩 5 天（看顏色分級用，不影響真實資料）
+  const _cdTest = new URLSearchParams(location.search).get('cd');
+  if (_cdTest !== null && !isNaN(parseInt(_cdTest, 10))) {
+    endDate = new Date(Date.now() + parseInt(_cdTest, 10) * 86400000).toISOString().slice(0, 10);
+  }
   if (endDate) {
     const sb = document.getElementById('status-badge');
     if (sb) { sb.innerHTML = '<i class="ti ti-pencil"></i> 選屋進行中'; sb.style.background = 'rgba(255,255,255,.22)'; sb.style.color = '#fff'; }
