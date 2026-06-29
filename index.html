@@ -499,25 +499,26 @@ function ownerDocProgress(ownerId) {
   const has    = STATE.docStatus[ownerId] || {};
   const owner  = STATE.owners.find(o => o.owner_id == ownerId);
   const required = requiredDocsFor(owner);
-  // 「完成」定義：已上傳歸檔（uploaded=true）或舊格式 true
-  const done   = required.filter(dt => {
+  // 「完成」定義：已上傳/實體收到「且無備註(問題)」。有備註=有缺漏問題，不算完成，列為待補正。
+  let done = 0, physOnly = 0, problem = 0;
+  const missing = [];
+  required.forEach(dt => {
     const v = has[dt.key];
-    if (!v) return false;
-    if (v === true) return true;
-    return !!v.uploaded;
-  }).length;
-  // 「現場已收」：physical=true 但未上傳
-  const physOnly = required.filter(dt => {
-    const v = has[dt.key];
-    if (!v || v === true) return false;
-    return v.physical && !v.uploaded;
-  }).length;
-  const missing = required.filter(dt => !has[dt.key]).map(dt => dt.key);
-  return { done, total: required.length, physOnly, missing };
+    if (!v) { missing.push(dt.key); return; }
+    if (v === true) { done++; return; }            // 舊格式
+    if (v.note) { problem++; return; }             // 有備註(問題)→待補正，不算完成
+    if (v.uploaded) { done++; return; }            // 已上傳歸檔且無問題
+    if (v.physical) { physOnly++; return; }         // 實體已收、未掃描
+    missing.push(dt.key);
+  });
+  return { done, total: required.length, physOnly, problem, missing };
 }
 
 function docProgressBadge(ownerId) {
   const prog = ownerDocProgress(ownerId);
+  if (prog.problem > 0) {
+    return `<span style="font-size:10px;color:var(--orange-text);background:var(--orange-bg);padding:0 6px;border-radius:6px;" title="有備註/問題待補正">有問題 ${prog.problem} 件待補正</span>`;
+  }
   if (prog.done === prog.total) {
     return `<span style="font-size:10px;color:var(--green-text);background:var(--green-bg);padding:0 6px;border-radius:6px;">收件齊全</span>`;
   }
@@ -569,7 +570,11 @@ function getSelForOwner(ownerId) {
 
 function ownerStatus(owner, sel) {
   if (owner && (owner.participate==='false'||owner.participate===false||owner.participate==='post')) return 'nonpart';
-  if (!sel) return 'none';
+  if (!sel) {
+    // 只做合併選配、沒有個人選配 → 視為已完成（合併選配）
+    if (owner && typeof getMergeInfoForOwner === 'function' && getMergeInfoForOwner(owner.owner_id).inMerge) return 'merge';
+    return 'none';
+  }
   if (sel.is_over_limit) return 'over';
   // check duplicate
   const hasDup = checkDuplicate(sel);
@@ -666,9 +671,10 @@ function renderOwnerList() {
     const sel = selOf(o.owner_id);
     const nonpart = (o.participate==='false'||o.participate===false||o.participate==='post');
     const prog = progOf(o.owner_id);
-    if (f === 'selected'    && !(nonpart || (sel && sel.status==='confirmed'))) return false;  // 已完成=正式登錄 或 不參與(已定案)，與上方統計一致
+    const mergeOnly = !(sel && sel.status==='confirmed') && !nonpart && getMergeInfoForOwner(o.owner_id).inMerge;
+    if (f === 'selected'    && !(nonpart || (sel && sel.status==='confirmed') || mergeOnly)) return false;  // 已完成=正式登錄 或 不參與(已定案) 或 純合併選配
     if (f === 'unselected'  && (sel && !nonpart ? sel.status!=='draft' : false) ) { /* keep drafts/none */ }
-    if (f === 'unselected'  && (nonpart || (sel && sel.status==='confirmed'))) return false;
+    if (f === 'unselected'  && (nonpart || (sel && sel.status==='confirmed') || mergeOnly)) return false;
     if (f === 'incomplete') {
       // 只要有一項紙本未收到就篩出來（需已選屋）
       const s = selOf(o.owner_id);
@@ -680,6 +686,7 @@ function renderOwnerList() {
         const v = has[dt.key];
         if (!v) return false;
         if (v === true) return true;
+        if (v.note) return false;   // 有備註(問題)→視為未齊，要篩出來補正
         return v.physical || v.uploaded;
       });
       if (allPhys) return false;
@@ -705,8 +712,14 @@ function renderOwnerList() {
     const s = selOf(o.owner_id); return s && s.status==='confirmed';
   }).length;
   const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false||o.participate==='post')).length;
-  // 已完成選屋 = 正式選配 + 不參與(已定案)；尚未 = 還沒決定的。確保「已完成 + 尚未 = 總數」
-  const selectedCount   = confirmedCount + nonpartCount;
+  // 只做合併選配、沒個人正式選配者，也算已完成（避免主頁顯示未選）
+  const mergeOnlyCount = participating.filter(o => {
+    const s = selOf(o.owner_id);
+    if (s && s.status==='confirmed') return false;   // 已算在 confirmedCount
+    return getMergeInfoForOwner(o.owner_id).inMerge;
+  }).length;
+  // 已完成選屋 = 正式選配 + 不參與(已定案) + 純合併選配；尚未 = 還沒決定的。確保「已完成 + 尚未 = 總數」
+  const selectedCount   = confirmedCount + nonpartCount + mergeOnlyCount;
   const unselectedCount = all.length - selectedCount;
   const incompleteCount = all.filter(o => {
     const s = selOf(o.owner_id);
@@ -722,8 +735,8 @@ function renderOwnerList() {
   document.getElementById('st-incomplete').textContent = incompleteCount;
   document.getElementById('st-nonpart').textContent    = nonpartCount;
 
-  const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft' };
-  const stLabel = { ok:'已選', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未選' };
+  const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft', merge:'badge-ok' };
+  const stLabel = { ok:'已選', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未選', merge:'合併選配' };
 
   const rows = list.map(o => {
     const sel = selOf(o.owner_id);
@@ -793,7 +806,7 @@ function renderOwnerList() {
       if (sel && isDup(sel)) flags.push('dup');
       if (sel?.status==='draft') flags.push('draft');
       if (sel?.status==='needs_reselect') flags.push('resel');
-      if (!flags.length) flags.push(sel ? 'ok' : 'none');
+      if (!flags.length) flags.push(sel ? 'ok' : (getMergeInfoForOwner(o.owner_id).inMerge ? 'merge' : 'none'));
       statusBadge = flags.map(k => `<span class="badge ${stMap[k]||''}">${stLabel[k]||k}</span>`).join('');
     }
 
@@ -927,8 +940,15 @@ function renderOwnerDetail(ownerId) {
 
     ${(owner.participate==='false'||owner.participate===false||owner.participate==='post') ? `
     <div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;margin-top:12px;font-size:12px;color:var(--ts);text-align:center;">
-      <i class="ti ti-info-circle"></i> 此地主不參與選配（不願/不能領取更新前價值），無需選位置
+      <i class="ti ti-info-circle"></i> ${owner.participate==='post'
+        ? '此地主不參與選配，領「更新後價值」現金，無需選位置'
+        : '此地主不參與選配，退還「更新前」土地價值，無需選位置'}
     </div>
+    ${owner.participate==='post' ? `
+    <div style="background:var(--brand-bg);border:0.5px solid var(--brand);border-radius:var(--rm);padding:10px 12px;margin-top:10px;text-align:center;">
+      <div style="font-size:11px;color:var(--brand-text);">應領現金（更新後可分配權利價值）</div>
+      <div style="font-size:18px;font-weight:600;color:var(--brand-text);margin-top:2px;">NT$${fmt(Number(owner.rights_value)||0)}</div>
+    </div>` : ''}
     <button class="btn-primary" style="width:100%;font-size:12px;margin-top:12px;" onclick="restoreParticipate('${ownerId}')">
       <i class="ti ti-rotate-clockwise"></i> 改為參與選配（之後想選屋／加入合併按這）
     </button>
@@ -1138,11 +1158,14 @@ function openSelectionModal(ownerId) {
   const sel   = getSelForOwner(ownerId);
   const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
   const parkNos = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
+  const mInfo = (typeof getMergeInfoForOwner === 'function') ? getMergeInfoForOwner(ownerId) : { inMerge:false, units:[], parks:[], gids:[] };
 
   // 預先載入戶別車位資料（快取未命中才呼叫）
   if (!window.CACHE?.units) preloadUnitParking();
 
   const isNonpart = sel?.status === 'nonparticipate' || owner?.participate === 'false' || owner?.participate === false;
+  const partMode = owner?.participate === 'post' ? 'post'
+                 : ((owner?.participate === 'false' || owner?.participate === false) ? 'false' : 'true');
   document.getElementById('modal-title').textContent = (sel ? '改選' : '新增選配') + ' — ' + (owner?.name||'');
   document.getElementById('modal-body').innerHTML = `
     <div class="grid-2 mb-12">
@@ -1150,13 +1173,16 @@ function openSelectionModal(ownerId) {
       <div><div class="field-label">選配上限</div><input type="text" value="NT$${fmt(owner?.upper_limit||0)}" disabled></div>
     </div>
 
-    <!-- 不參與權變勾選 -->
+    <!-- 參與狀態（參與選配 / 不參與領更新前 / 不參與領更新後） -->
     <div class="mb-12" style="background:var(--orange-bg);border:0.5px solid var(--orange);border-radius:var(--rm);padding:10px 14px;">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <input type="checkbox" id="sel-nonpart" ${isNonpart?'checked':''} onchange="toggleNonpart(this,'${ownerId}')"
-          style="width:16px;height:16px;cursor:pointer;">
-        <span style="font-size:13px;font-weight:500;color:var(--orange-text);">不參與權變（勾選後戶別車位欄位停用，退還更新前土地價值）</span>
-      </label>
+      <div style="font-size:13px;font-weight:500;color:var(--orange-text);margin-bottom:6px;">參與狀態</div>
+      <select id="sel-partmode" onchange="onSelPartMode(this.value,'${ownerId}')"
+        style="width:100%;padding:7px 9px;border:0.5px solid var(--bs);border-radius:var(--rm);background:var(--cp);font-size:13px;">
+        <option value="true" ${partMode==='true'?'selected':''}>參與選配（需選戶別／車位）</option>
+        <option value="false" ${partMode==='false'?'selected':''}>不參與，領更新前價值（退還更新前土地價值）</option>
+        <option value="post" ${partMode==='post'?'selected':''}>不參與，領更新後價值（領現金，不選屋）</option>
+      </select>
+      <div id="sel-partmode-info" style="font-size:12px;margin-top:6px;"></div>
     </div>
 
     <div id="sel-fields">
@@ -1174,6 +1200,11 @@ function openSelectionModal(ownerId) {
       <div class="field-label">身分證字號（供前台地主以身分證查詢；儲存時自動加密，不留明碼）</div>
       <input type="text" id="sel-idnum" value="" placeholder="例：A123456789（已建檔者可留空）">
     </div>
+    ${mInfo.inMerge ? `
+    <div class="mb-12" style="background:var(--brand-bg);border:0.5px solid var(--brand);border-radius:var(--rm);padding:10px 14px;font-size:12px;color:var(--brand-text);">
+      <i class="ti ti-users"></i> 此地主已參與合併選配（${mInfo.gids.join('、')}）：分到 <b>${(mInfo.units.concat(mInfo.parks)).join('、')||'—'}</b>。
+      <br>合併分到的戶別/車位由「合併管理」登錄、列印申請書時會自動帶入，<b>下方個人選配欄位請勿重複填寫</b>合併的戶別。
+    </div>` : ''}
     <div class="mb-12">
       <div class="field-label">已選戶別（可用簡寫：03a2 → 3F-A2，逗號分隔）</div>
       <input type="text" id="sel-units" value="${unitNos.join(',')}" placeholder="例：03a2,21a1 或 3F-A2"
@@ -1206,22 +1237,28 @@ function openSelectionModal(ownerId) {
   `;
 
   // 若已是不參與，立即停用欄位
-  if (isNonpart) toggleNonpart(document.getElementById('sel-nonpart'), ownerId);
+  onSelPartMode(partMode, ownerId);
   openModal();
 }
 
-function toggleNonpart(checkbox, ownerId) {
+// 參與狀態切換：參與選配 / 不參與領更新前 / 不參與領更新後（領現金，顯示金額）
+function onSelPartMode(mode, ownerId) {
   const fields = document.getElementById('sel-fields');
   const inputs = fields ? fields.querySelectorAll('input, textarea') : [];
-  if (checkbox.checked) {
-    inputs.forEach(el => { el.disabled = true; el.style.opacity = '0.4'; });
-    document.getElementById('sel-validation').innerHTML =
-      `<div style="background:var(--orange-bg);color:var(--orange-text);padding:8px 12px;border-radius:6px;font-size:12px;">
-        <i class="ti ti-alert-circle"></i> 不參與權變：退還更新前土地權利價值，不需填寫選配戶別
-      </div>`;
-  } else {
+  const info   = document.getElementById('sel-partmode-info');
+  const sv     = document.getElementById('sel-validation');
+  const owner  = STATE.owners.find(o => o.owner_id == ownerId);
+  const rights = Number(owner?.rights_value) || 0;
+  if (mode === 'true') {
     inputs.forEach(el => { el.disabled = false; el.style.opacity = '1'; });
-    document.getElementById('sel-validation').innerHTML = '';
+    if (info) info.innerHTML = '';
+    if (sv)   sv.innerHTML = '';
+  } else {
+    inputs.forEach(el => { el.disabled = true; el.style.opacity = '0.4'; });
+    if (sv) sv.innerHTML = '';
+    if (info) info.innerHTML = (mode === 'post')
+      ? `<span style="color:var(--brand-text);"><i class="ti ti-cash"></i> 不參與選配，領「更新後價值」現金 <b>NT$${fmt(rights)}</b>（＝更新後可分配權利價值）。送出後不需選戶別。</span>`
+      : `<span style="color:var(--orange-text);"><i class="ti ti-alert-circle"></i> 不參與選配，退還「更新前」土地權利價值（依更新前估價，系統不計算金額）。不需選戶別。</span>`;
   }
 }
 
@@ -1319,18 +1356,20 @@ function previewSelection(ownerId) {
 }
 
 async function submitSelection(ownerId, status) {
-  // ── 不參與權變 ──
-  const nonpartChk = document.getElementById('sel-nonpart');
-  if (nonpartChk && nonpartChk.checked) {
+  // ── 不參與（領更新前 / 領更新後價值）──
+  const modeEl = document.getElementById('sel-partmode');
+  const mode = modeEl ? modeEl.value : 'true';
+  if (mode === 'false' || mode === 'post') {
     const btn = document.getElementById('btn-confirm') || document.querySelector('#modal-box .btn-success');
     if (btn) { btn.disabled = true; btn.textContent = '處理中…'; }
     try {
-      await apiPost('saveOwner', { owner_id: ownerId, participate: 'false', change_reason: '不參與權變' });
+      await apiPost('saveOwner', { owner_id: ownerId, participate: mode,
+        change_reason: mode === 'post' ? '不參與-領更新後價值' : '不參與-領更新前價值' });
       await loadOwners();
       renderOwnerList();
       renderOwnerDetail(ownerId);
       closeModal();
-      alert('已標記為不參與權變');
+      alert(mode === 'post' ? '已標記為「不參與，領更新後價值」' : '已標記為「不參與，領更新前價值」');
     } catch(e) {
       if (btn) { btn.disabled = false; btn.textContent = '正式登錄'; }
       alert('失敗：' + e.message);
@@ -2693,12 +2732,9 @@ function recalcMerge(skipAmountRender) {
   const submitBtn = document.getElementById('merge-submit-btn');
   if (!checkEl) return;
 
-  // 各人剩餘、個人110%上限
+  // 各人剩餘額度（remaining 已是 upper_limit=權值×110% 扣掉已用後的可用額度，不可再×1.1）
   const remainSum   = members.reduce((s,oid) => s + (MERGE_STATE.usage[oid]?.remaining||0), 0);
-  const combinedLimit = members.reduce((s,oid) => {
-    const rem = MERGE_STATE.usage[oid]?.remaining||0;
-    return s + Math.round(rem * 1.1);
-  }, 0);
+  const combinedLimit = remainSum;   // 合併可用上限 = 各人剩餘額度加總
   const overLimit = total > combinedLimit && total > 0;
   const hasMembers = members.length >= 2;
   const hasSelection = (units.length + parks.length) > 0;
@@ -2710,7 +2746,7 @@ function recalcMerge(skipAmountRender) {
     const invested = MERGE_STATE.invest[oid]||0;
     const pct = remainSum > 0 ? Math.round(remaining/remainSum*100) : 0;
     const s = invested - remaining;  // 出資 − 剩餘 = 找補
-    const overPersonal = invested > Math.round(remaining*1.1);
+    const overPersonal = invested > remaining;  // remaining 已含110%額度，登記數值不可超過
     return `<div class="flex justify-between text-xs" style="padding:3px 0;">
       <span>${u.name||oid}
         <span class="text-muted">（剩餘${fmt(remaining)}，佔${pct}%，出${fmt(invested)}）</span>
@@ -2725,7 +2761,7 @@ function recalcMerge(skipAmountRender) {
   if (codeErrs.length) problems.push(`代號不存在：${codeErrs.join('、')}`);
   if (!hasMembers) problems.push('合併組至少需要 2 人');
   if (!hasSelection) problems.push('請輸入選配戶別或車位');
-  if (overLimit) problems.push(`選配總價 NT$${fmt(total)} 超過合併上限 NT$${fmt(combinedLimit)}（各人剩餘×110%加總），不能選`);
+  if (overLimit) problems.push(`選配總價 NT$${fmt(total)} 超過合併可用上限 NT$${fmt(combinedLimit)}（各人剩餘額度加總，已含110%），不能選`);
   // 分數加總必須剛好 = 1（100%）
   if (hasMembers) {
     const fs = MERGE_STATE.fracSum || 0;
@@ -2737,8 +2773,7 @@ function recalcMerge(skipAmountRender) {
   checkEl.innerHTML = `
     <div style="background:var(--cs);border-radius:6px;padding:10px 12px;font-size:12px;">
       <div class="flex justify-between mb-2"><span class="text-muted">選配總價</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
-      <div class="flex justify-between mb-2"><span class="text-muted">剩餘加總</span><span>NT$${fmt(remainSum)}</span></div>
-      <div class="flex justify-between mb-2"><span class="text-muted">合併上限（×110%）</span>
+      <div class="flex justify-between mb-2"><span class="text-muted">合併可用上限（各人剩餘額度加總，已含110%）</span>
         <span style="font-weight:500;color:${overLimit?'var(--red-text)':'var(--tp)'};">NT$${fmt(combinedLimit)}</span></div>
       ${total>0&&members.length>0?`<div style="border-top:0.5px solid var(--bt);margin-top:6px;padding-top:6px;">
         <div class="text-muted mb-4">各人出資與找補：</div>${splitRows}</div>`:''}
@@ -2770,21 +2805,18 @@ async function submitMerge() {
   });
   // 合併權值基礎 = 各人權值加總（非登記數值加總）
   const combinedRights = ownerIds.reduce((s, oid) => s + (Number(MERGE_STATE.usage[oid]?.rights_value) || 0), 0);
-  const combinedLimit  = ownerIds.reduce((s, oid) => s + Math.round((MERGE_STATE.usage[oid]?.remaining || 0) * 1.1), 0);
+  // 合併可用上限 = 各人剩餘額度加總（remaining 已含110%，不可再×1.1）
+  const combinedLimit  = ownerIds.reduce((s, oid) => s + (Number(MERGE_STATE.usage[oid]?.remaining) || 0), 0);
   const members = ownerIds.map(oid => ({ owner_id: oid, invested: MERGE_STATE.invest[oid] || 0 }));
 
   // 前端硬擋（與後端一致）
-  const remainSum2 = members.reduce((s,m) => s + (MERGE_STATE.usage[m.owner_id]?.remaining||0), 0);
-  const combinedLimit2 = members.reduce((s,m) => {
-    const rem = MERGE_STATE.usage[m.owner_id]?.remaining||0;
-    return s + Math.round(rem*1.1);
-  }, 0);
+  const combinedLimit2 = members.reduce((s,m) => s + (MERGE_STATE.usage[m.owner_id]?.remaining||0), 0);
   if (members.length < 2) { alert('合併組至少需要 2 人'); return; }
   if (!units.length && !parks.length) { alert('請輸入選配戶別或車位'); return; }
   const fracSum = MERGE_STATE.fracSum || 0;
   if (Math.abs(fracSum - 1) > 0.005) { alert(`各人分數加總為 ${(fracSum*100).toFixed(1)}%，需湊到剛好 100%（加總=1）才能送出`); return; }
   const mergeTotal = MERGE_STATE.mergeTotal || 0;
-  if (mergeTotal > combinedLimit2) { alert(`選配總價超過合併上限 NT$${fmt(combinedLimit2)}，不能送出`); return; }
+  if (mergeTotal > combinedLimit2) { alert(`選配總價 NT$${fmt(mergeTotal)} 超過合併可用上限 NT$${fmt(combinedLimit2)}（已含110%），不能送出`); return; }
 
   MERGE_STATE.submitting = true;
   const btn = document.getElementById('merge-submit-btn');
@@ -3396,15 +3428,18 @@ async function loadLotteryList() {
         </div>`).join('')}
       </div>
       ${!hasWinner ? `
+      <div style="font-size:11px;color:var(--tt);margin-bottom:6px;">
+        <i class="ti ti-info-circle"></i> 抽籤方式：選出「得獎者」即可，<b>其餘人會自動標記為「落選需改選」</b>（不需另外設定落選者）。
+      </div>
       <div class="flex gap-8 items-center">
         <select id="winner-${type}-${code}" style="flex:1;padding:6px 8px;border:0.5px solid var(--bs);border-radius:var(--rm);background:var(--cp);">
-          <option value="">選擇得獎者…</option>
+          <option value="">選擇得獎者（其餘自動落選）…</option>
           ${owners.map(o => `<option value="${o.oid}">${o.name}</option>`).join('')}
         </select>
         <input type="date" id="ldate-${type}-${code}" style="width:130px;padding:6px 8px;border:0.5px solid var(--bs);border-radius:var(--rm);">
         <button class="btn-primary" style="white-space:nowrap;"
           onclick="submitLottery('${code}','${type}',${JSON.stringify(ownerIds)})">
-          <i class="ti ti-check"></i> 登錄結果
+          <i class="ti ti-check"></i> 登錄抽籤結果
         </button>
       </div>` : ''}
     </div>`;
