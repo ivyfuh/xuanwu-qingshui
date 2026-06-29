@@ -167,7 +167,7 @@ tr.selected td{background:#EDF5FB;}
         <div class="flex items-center gap-8 mb-12" style="flex-wrap:wrap;">
           <input type="text" id="search" placeholder="搜尋姓名 / 編號…"
             style="width:200px;" oninput="filterOwners()">
-          <button class="btn-secondary text-sm" onclick="refreshData(true)" title="重新載入最新資料（多人同時選屋時用）"><i class="ti ti-refresh"></i> 重新整理</button>
+          <button id="refresh-btn" class="btn-secondary text-sm" onclick="refreshData(true, this)" title="重新載入最新資料（多人同時選屋時用）"><i class="ti ti-refresh"></i> 重新整理</button>
           <span id="auto-refresh-time" class="text-xs text-muted"></span>
         </div>
 
@@ -1959,14 +1959,16 @@ function navTo(view) {
 
 // ── 多人共用：自動／手動重新整理最新資料（選屋期間用）──
 let _refreshing = false;
-async function refreshData(force) {
+async function refreshData(force, btn) {
   if (_refreshing) return;
   if (!USER?.token) return;                              // 未登入不刷
   if (document.getElementById('modal-overlay')?.classList.contains('open')) return;  // 編輯中不打擾
   if (!force && document.hidden) return;                 // 背景分頁不刷
   _refreshing = true;
+  let orig;
+  if (btn) { orig = btn.innerHTML; btn.disabled = true; btn.style.opacity = '0.7'; btn.innerHTML = '<i class="ti ti-loader-2"></i> 重新整理中…'; }
   try {
-    await Promise.all([loadOwners(), loadSelections(), loadDocStatus()]);
+    await Promise.all([loadOwners(), loadSelections(), loadDocStatus(), loadMergeData()]);
     const v = STATE.view || 'list';
     if (v === 'list') renderOwnerList();
     else if (v === 'lottery') loadDashboard();
@@ -1976,7 +1978,13 @@ async function refreshData(force) {
     }
     const t = document.getElementById('auto-refresh-time');
     if (t) t.textContent = '已更新 ' + new Date().toLocaleTimeString('zh-TW');
-  } finally { _refreshing = false; }
+    if (btn) btn.innerHTML = '<i class="ti ti-check"></i> 已更新';
+  } catch(e) {
+    if (btn) btn.innerHTML = '<i class="ti ti-alert-triangle"></i> 更新失敗';
+  } finally {
+    _refreshing = false;
+    if (btn) setTimeout(() => { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = orig; }, 900);
+  }
 }
 // 每 15 秒自動重新整理（僅清單／總覽／抽籤頁、且非編輯中、分頁在前景）
 setInterval(() => {
@@ -2562,13 +2570,30 @@ function resetMergeAuto() {
   recalcMerge();
 }
 
-// 改某人的「分子」或「分母」→ 標記手動、重算登記數值
+// 改某人的「分子」或「分母」→ 標記手動、重算金額
 function setMergeFracPart(ownerId, part, val) {
   if (!MERGE_STATE.frac[ownerId]) MERGE_STATE.frac[ownerId] = { num: 1, den: 1 };
   if (val === '') MERGE_STATE.frac[ownerId][part] = '';
   else MERGE_STATE.frac[ownerId][part] = Math.max(part === 'den' ? 1 : 0, Number(val) || 0);
   MERGE_STATE.manualFrac = true;    // 改了就用手動值，不再自動套剩餘值
-  recalcMerge(true);   // 只更新登記數值，不重畫分子/分母框（保住游標）
+  recalcMerge('amt');   // 只更新「金額」框，不重畫分子/分母框（保住游標）
+}
+
+function _gcd2(a, b) { a = Math.abs(Math.round(a)); b = Math.abs(Math.round(b)); while (b) { [a, b] = [b, a % b]; } return a || 1; }
+
+// 直接輸入「金額」→ 反推分數（金額/選配總價，GCD 約分），標記手動
+function setMergeAmount(ownerId, val) {
+  const total = MERGE_STATE.mergeTotal || 0;
+  const amt = Math.max(0, Math.round(Number(val) || 0));
+  MERGE_STATE.invest[ownerId] = amt;
+  if (total > 0) {
+    const g = _gcd2(amt, total);
+    MERGE_STATE.frac[ownerId] = { num: Math.round(amt / g), den: Math.round(total / g) };
+  } else {
+    MERGE_STATE.frac[ownerId] = { num: amt, den: amt || 1 };
+  }
+  MERGE_STATE.manualFrac = true;
+  recalcMerge('frac');   // 只更新「分子/分母」框，不重畫金額框（保住游標）
 }
 
 function toggleMergeMember(ownerId) {
@@ -2730,35 +2755,45 @@ function recalcMerge(skipAmountRender) {
       : '<span class="text-xs text-muted">尚未選擇組員</span>';
   }
 
-  // 各人「分子 / 分母」→ 登記數值(金額)
+  // 各人「分子 / 分母」↔「金額」雙向：改分數算金額、改金額反推分數
+  const _gridCols = '1fr 70px 16px 70px 130px';
   if (!skipAmountRender) {
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
-      rowsEl.innerHTML = `<div style="display:grid;grid-template-columns:1fr 50px 12px 50px 104px;gap:5px;font-size:10px;color:var(--tt);margin-bottom:3px;">
-          <div>組員</div><div style="text-align:center;">分子</div><div></div><div style="text-align:center;">分母</div><div style="text-align:right;">登記數值</div>
+      rowsEl.innerHTML = `<div style="display:grid;grid-template-columns:${_gridCols};gap:6px;font-size:11px;color:var(--tt);margin-bottom:4px;">
+          <div>組員</div><div style="text-align:center;">分子</div><div></div><div style="text-align:center;">分母</div><div style="text-align:right;">金額(可改)</div>
         </div>` + members.map(oid => {
         const u = MERGE_STATE.usage[oid] || {};
         const f = MERGE_STATE.frac[oid] || { num: 1, den: 1 };
         const amt = MERGE_STATE.invest[oid] || 0;
         const overRemain = amt > (u.remaining||0) + 1;
-        return `<div style="display:grid;grid-template-columns:1fr 50px 12px 50px 104px;gap:5px;align-items:center;margin-bottom:5px;">
+        return `<div style="display:grid;grid-template-columns:${_gridCols};gap:6px;align-items:center;margin-bottom:6px;">
           <span style="font-size:12px;">${u.name||oid}
             <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(u.remaining||0)}）</span></span>
-          <input type="number" min="0" class="merge-num" value="${f.num}" oninput="setMergeFracPart('${oid}','num',this.value)" placeholder="分子" style="text-align:center;font-size:12px;padding:4px 2px;">
-          <span style="text-align:center;color:var(--tt);">/</span>
-          <input type="number" min="1" class="merge-den" value="${f.den}" oninput="setMergeFracPart('${oid}','den',this.value)" placeholder="分母" style="text-align:center;font-size:12px;padding:4px 2px;">
-          <span class="merge-amt" title="登記數值 = 佔比 × 選配總價" style="text-align:right;font-size:12px;color:${overRemain?'var(--red-text)':'var(--tp)'};font-weight:500;">NT$${fmt(amt)}</span>
+          <input type="number" min="0" class="merge-num" value="${f.num}" oninput="setMergeFracPart('${oid}','num',this.value)" placeholder="分子" style="text-align:center;font-size:15px;padding:7px 4px;height:34px;">
+          <span style="text-align:center;color:var(--tt);font-size:15px;">/</span>
+          <input type="number" min="1" class="merge-den" value="${f.den}" oninput="setMergeFracPart('${oid}','den',this.value)" placeholder="分母" style="text-align:center;font-size:15px;padding:7px 4px;height:34px;">
+          <input type="number" min="0" step="1000" class="merge-amt" value="${amt}" oninput="setMergeAmount('${oid}',this.value)" title="可直接輸入金額，分數會自動反推" style="text-align:right;font-size:14px;padding:7px 6px;height:34px;font-weight:500;color:${overRemain?'var(--red-text)':'var(--tp)'};">
         </div>`;
       }).join('');
     }
   } else {
+    // 打字中：只更新「另一邊」的欄位值，不重畫整列（保住游標）
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
       members.forEach((oid, i) => {
-        const amt = MERGE_STATE.invest[oid] || 0;
-        // 子列第一個是表頭，成員從 children[i+1]
-        const amtEl = rowsEl.children[i + 1]?.querySelector('.merge-amt');
-        if (amtEl) amtEl.textContent = 'NT$' + fmt(amt);
+        const rowEl = rowsEl.children[i + 1];   // 第一個是表頭
+        if (!rowEl) return;
+        if (skipAmountRender === 'frac') {
+          // 剛改了金額 → 更新分子/分母框
+          const f = MERGE_STATE.frac[oid] || {};
+          const n = rowEl.querySelector('.merge-num'); if (n && document.activeElement !== n) n.value = f.num;
+          const d = rowEl.querySelector('.merge-den'); if (d && document.activeElement !== d) d.value = f.den;
+        } else {
+          // 剛改了分子/分母 → 更新金額框
+          const a = rowEl.querySelector('.merge-amt');
+          if (a && document.activeElement !== a) a.value = MERGE_STATE.invest[oid] || 0;
+        }
       });
     }
   }
