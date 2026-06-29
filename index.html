@@ -2303,12 +2303,18 @@ function openMergeModal(groupId) {
   const group = groupId ? MERGE_STATE.groups.find(g => g.group_id === groupId) : null;
   MERGE_STATE.editing = groupId || null;
   MERGE_STATE.memberSearch = '';
-  // 投入金額表：{ owner_id: 金額 }，編輯時帶入原投入，新增時帶入剩餘全額
+  // 登記數值＋分子/分母，編輯時帶回原本的
   MERGE_STATE.invest = {};
+  MERGE_STATE.frac = {};
   if (group) {
-    group.members.forEach(m => { MERGE_STATE.invest[m.owner_id] = Number(m.invested)||0; });
+    const ids = group.owner_ids || (group.members || []).map(m => m.owner_id);
+    const gf = group.fracs || {};
+    ids.forEach(oid => { MERGE_STATE.frac[oid] = gf[oid] || { num: 1, den: 1 }; });
+    (group.members || []).forEach(m => { MERGE_STATE.invest[m.owner_id] = Number(m.invested) || 0; });
+    MERGE_STATE.selectedMembers = ids;
+  } else {
+    MERGE_STATE.selectedMembers = [];
   }
-  MERGE_STATE.selectedMembers = group ? group.members.map(m => m.owner_id) : [];
   MERGE_STATE.mergeTotal = 0;  // 選配總價（試算後更新）
   // 編輯既有組：保留原投入（手動模式）；新增組：自動分攤模式
   MERGE_STATE.manualInvest = group ? true : false;
@@ -2392,8 +2398,18 @@ function renderMergeCandidates() {
 }
 
 function resetMergeAuto() {
+  MERGE_STATE.frac = {};          // 全部回到等分（每人 1/1）
   MERGE_STATE.manualInvest = false;
   recalcMerge();
+}
+
+// 改某人的「分子」或「分母」→ 重算登記數值
+function setMergeFracPart(ownerId, part, val) {
+  if (!MERGE_STATE.frac[ownerId]) MERGE_STATE.frac[ownerId] = { num: 1, den: 1 };
+  if (val === '') MERGE_STATE.frac[ownerId][part] = '';
+  else MERGE_STATE.frac[ownerId][part] = Math.max(part === 'den' ? 1 : 0, Number(val) || 0);
+  MERGE_STATE.manualInvest = true;
+  recalcMerge(true);   // 只更新登記數值，不重畫分子/分母框（保住游標）
 }
 
 function toggleMergeMember(ownerId) {
@@ -2401,12 +2417,9 @@ function toggleMergeMember(ownerId) {
   if (i >= 0) {
     MERGE_STATE.selectedMembers.splice(i,1);
     delete MERGE_STATE.invest[ownerId];
+    if (MERGE_STATE.frac) delete MERGE_STATE.frac[ownerId];
   } else {
     MERGE_STATE.selectedMembers.push(ownerId);
-    // 手動模式才寫死剩餘全額；自動模式交給 autoDistributeInvest 按比例分攤
-    if (MERGE_STATE.manualInvest) {
-      MERGE_STATE.invest[ownerId] = MERGE_STATE.usage[ownerId]?.remaining || 0;
-    }
   }
   renderMergeCandidates();
   recalcMerge();
@@ -2496,13 +2509,25 @@ function recalcMerge(skipAmountRender) {
 
   const members = MERGE_STATE.selectedMembers;
 
-  // 自動分攤模式：按剩餘比例分攤選配總價（除非承辦已手動調整）
-  if (!MERGE_STATE.manualInvest && total > 0 && members.length >= 2) {
-    autoDistributeInvest(total);
-    skipAmountRender = false;  // 需要重繪金額框顯示新分攤
-  }
+  // 每位成員的「分子/分母」權重（預設等分 1/1）；移除非成員的
+  MERGE_STATE.frac = MERGE_STATE.frac || {};
+  members.forEach(oid => { if (!MERGE_STATE.frac[oid]) MERGE_STATE.frac[oid] = { num: 1, den: 1 }; });
+  Object.keys(MERGE_STATE.frac).forEach(oid => { if (!members.includes(oid)) delete MERGE_STATE.frac[oid]; });
 
-  const investTotal = members.reduce((s,oid) => s + (MERGE_STATE.invest[oid]||0), 0);
+  // 權重正規化 → 各人佔比 → 登記數值(金額) = 佔比 × 選配總價（同分數必同佔比）
+  const weights = members.map(oid => {
+    const f = MERGE_STATE.frac[oid] || { num: 1, den: 1 };
+    const den = Number(f.den) || 0;
+    return den > 0 ? (Number(f.num) || 0) / den : 0;
+  });
+  const wSum = weights.reduce((s, w) => s + w, 0) || 1;
+  MERGE_STATE.ratio = {};
+  members.forEach((oid, i) => {
+    const ratio = weights[i] / wSum;
+    MERGE_STATE.ratio[oid] = ratio;
+    MERGE_STATE.invest[oid] = Math.round(ratio * total);
+  });
+  const investTotal = total;  // 登記數值加總 = 選配總價
 
   // 已選組員 chips 顯示在上方
   const chipsEl = document.getElementById('merge-selected-chips');
@@ -2518,35 +2543,35 @@ function recalcMerge(skipAmountRender) {
       : '<span class="text-xs text-muted">尚未選擇組員</span>';
   }
 
-  // 各人出資輸入列（比例 = 投入 ÷ 出資加總）
+  // 各人「分子 / 分母」→ 登記數值(金額)
   if (!skipAmountRender) {
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
-      rowsEl.innerHTML = members.map(oid => {
+      rowsEl.innerHTML = `<div style="display:grid;grid-template-columns:1fr 50px 12px 50px 104px;gap:5px;font-size:10px;color:var(--tt);margin-bottom:3px;">
+          <div>組員</div><div style="text-align:center;">分子</div><div></div><div style="text-align:center;">分母</div><div style="text-align:right;">登記數值</div>
+        </div>` + members.map(oid => {
         const u = MERGE_STATE.usage[oid] || {};
+        const f = MERGE_STATE.frac[oid] || { num: 1, den: 1 };
         const amt = MERGE_STATE.invest[oid] || 0;
-        const pct = investTotal > 0 ? (amt/investTotal*100) : 0;
         const overRemain = amt > (u.remaining||0) + 1;
-        return `<div style="display:grid;grid-template-columns:1fr 110px 86px;gap:6px;align-items:center;margin-bottom:5px;">
+        return `<div style="display:grid;grid-template-columns:1fr 50px 12px 50px 104px;gap:5px;align-items:center;margin-bottom:5px;">
           <span style="font-size:12px;">${u.name||oid}
             <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(u.remaining||0)}）</span></span>
-          <input type="number" value="${amt}" oninput="setMergeAmount('${oid}', this.value)"
-            style="font-size:12px;padding:4px 8px;${overRemain?'border-color:var(--red);':''}" placeholder="金額">
-          <input type="text" class="merge-frac" title="出資佔合併組總額的分數，可直接填如 1/3" value="${mergeFrac(amt, investTotal)}" oninput="setMergeFraction('${oid}', this.value)" placeholder="如 1/3" style="text-align:center;font-size:12px;padding:4px 4px;color:var(--tp);font-weight:500;">
+          <input type="number" min="0" class="merge-num" value="${f.num}" oninput="setMergeFracPart('${oid}','num',this.value)" placeholder="分子" style="text-align:center;font-size:12px;padding:4px 2px;">
+          <span style="text-align:center;color:var(--tt);">/</span>
+          <input type="number" min="1" class="merge-den" value="${f.den}" oninput="setMergeFracPart('${oid}','den',this.value)" placeholder="分母" style="text-align:center;font-size:12px;padding:4px 2px;">
+          <span class="merge-amt" title="登記數值 = 佔比 × 選配總價" style="text-align:right;font-size:12px;color:${overRemain?'var(--red-text)':'var(--tp)'};font-weight:500;">NT$${fmt(amt)}</span>
         </div>`;
       }).join('');
     }
   } else {
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
-      const active = document.activeElement;
       members.forEach((oid, i) => {
-        const amt = MERGE_STATE.invest[oid]||0;
-        const inputs = rowsEl.children[i]?.querySelectorAll('input');
-        // 不更新使用者正在編輯的框，避免游標跳走
-        if (inputs && inputs[0] && inputs[0] !== active) inputs[0].value = amt;
-        const frac = rowsEl.children[i]?.querySelector('.merge-frac');
-        if (frac && frac !== active) frac.value = mergeFrac(amt, investTotal);
+        const amt = MERGE_STATE.invest[oid] || 0;
+        // 子列第一個是表頭，成員從 children[i+1]
+        const amtEl = rowsEl.children[i + 1]?.querySelector('.merge-amt');
+        if (amtEl) amtEl.textContent = 'NT$' + fmt(amt);
       });
     }
   }
@@ -2620,9 +2645,14 @@ async function submitMerge() {
   const units = expandCodeList(document.getElementById('merge-units').value);
   const parks = expandCodeList(document.getElementById('merge-parks').value);
   const ownerIds = [...MERGE_STATE.selectedMembers];
-  const invests = {};
-  ownerIds.forEach(oid => { invests[oid] = MERGE_STATE.invest[oid] || 0; });
-  const combinedRights = ownerIds.reduce((s, oid) => s + (MERGE_STATE.invest[oid] || 0), 0);
+  const invests = {};   // 登記數值(= 佔比 × 選配總價)
+  const fracs = {};     // 各人分子/分母
+  ownerIds.forEach(oid => {
+    invests[oid] = MERGE_STATE.invest[oid] || 0;
+    fracs[oid] = MERGE_STATE.frac?.[oid] || { num: 1, den: 1 };
+  });
+  // 合併權值基礎 = 各人權值加總（非登記數值加總）
+  const combinedRights = ownerIds.reduce((s, oid) => s + (Number(MERGE_STATE.usage[oid]?.rights_value) || 0), 0);
   const combinedLimit  = ownerIds.reduce((s, oid) => s + Math.round((MERGE_STATE.usage[oid]?.remaining || 0) * 1.1), 0);
   const members = ownerIds.map(oid => ({ owner_id: oid, invested: MERGE_STATE.invest[oid] || 0 }));
 
@@ -2645,7 +2675,7 @@ async function submitMerge() {
     await apiPost('saveMergeGroup', {
       group_id: MERGE_STATE.editing || undefined,
       owner_ids: ownerIds,
-      invests,
+      invests, fracs,
       unit_nos: units, parking_nos: parks,
       combined_rights: combinedRights,
       combined_limit: combinedLimit,
