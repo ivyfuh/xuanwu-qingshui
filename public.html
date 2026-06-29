@@ -873,7 +873,7 @@ function showUnit(code) {
         <span class="text-muted">戶型代號</span><span class="font-medium">${type}</span>
         <span class="text-muted">樓層</span><span class="font-medium">${fl}</span>
         ${u ? `<span class="text-muted">總建物面積</span><span class="font-medium">${u.area_sqp} 坪</span>
-               <span class="text-muted">圖冊價值</span><span class="font-medium">NT$${fmt(u.total_value)}</span>` : ''}
+               <span class="text-muted">總價(含露臺)</span><span class="font-medium">NT$${fmt(u.total_value)}</span>` : ''}
       </div>
     </div>
     ${cnt >= 2 ? `<div class="mt-8" style="background:var(--red-bg);border-radius:var(--rm);padding:8px 10px;font-size:11px;color:var(--red-text);">
