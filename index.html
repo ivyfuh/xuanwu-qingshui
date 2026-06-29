@@ -2292,6 +2292,8 @@ async function printApplication(ownerId) {
 
   const today = new Date();
   const rocYear = today.getFullYear() - 1911;
+  const rocMonth = today.getMonth() + 1;
+  const rocDay = today.getDate();
 
   const html = `
 <!DOCTYPE html>
@@ -2338,7 +2340,7 @@ async function printApplication(ownerId) {
   <div class="doc-tag"><span style="border:1px solid #000;padding:1px 10px;">附件三</span></div>
   <div class="title">「擬訂新北市土城區清水段103地號1筆土地都市更新事業計畫暨權利變換計畫案」更新後分配位置申請書</div>
 
-  <div class="filler">填寫人：<span class="fill-line" style="min-width:200px;">${owner.name||''}</span></div>
+  <div class="filler">填寫人：<span class="fill-line" style="min-width:200px;"></span></div>
 
   <div class="small">本人願意參與分配，茲就實施者所提供更新後各分配單元面積位置對照表及更新後配置圖、各樓層平面圖，申請分配下列單元及車位位置。</div>
 
@@ -2360,13 +2362,15 @@ async function printApplication(ownerId) {
   </div>
 
   <div class="sign-area">
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;">
-      <span>所有權人：${owner.name||''}</span><span>（簽名及蓋章）</span>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;">
+      <span>所有權人：</span><span>（簽名及蓋章）</span>
     </div>
-    <div class="sign-row">身分證字號(統一編號)：<span class="ul"></span></div>
-    <div class="sign-row">聯絡地址(營業所在地)：<span class="ul">${owner.address||''}</span></div>
-    <div class="sign-row">聯絡電話：<span class="ul">${owner.phone||''}</span></div>
-    <div style="margin-top:12px;">中　　華　　民　　國　　　　　年　　　　月　　　　日</div>
+    <div style="margin:10px 0;">身分證字號(統一編號)：</div>
+    <div style="margin:10px 0;">聯絡地址(營業所在地)：${owner.address||''}</div>
+    <div style="margin:10px 0;">聯絡電話：${owner.phone||''}</div>
+    <div style="display:flex;justify-content:space-between;margin-top:18px;letter-spacing:2px;">
+      <span>中　華　民　國</span><span>${rocYear}　年</span><span>${rocMonth}　月</span><span>${rocDay}　日</span>
+    </div>
   </div>
 
   <div class="foot">附件三 1/1</div>
