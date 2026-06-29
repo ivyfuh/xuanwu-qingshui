@@ -2028,7 +2028,28 @@ function renderSettings() {
     ${rows}
     <div id="settings-msg" style="margin:10px 0;"></div>
     <button class="btn-success" onclick="saveStages()"><i class="ti ti-check"></i> 儲存五階段</button>
+
+    <div style="border-top:0.5px solid var(--bt);margin-top:22px;padding-top:16px;">
+      <div style="font-size:14px;font-weight:500;margin-bottom:4px;color:var(--red-text);">正式上線</div>
+      <div class="text-xs text-muted" style="margin-bottom:10px;line-height:1.6;">
+        目前環境：<b>${cfg.env==='production'?'正式版（production）':'測試環境（test）'}</b>。<br>
+        按「一鍵正式上線」會：① 清空所有<b>選屋／合併</b>資料 ② participate 全還原成參與 ③ 切換成<b>正式版</b>（移除公開頁的測試橫幅）。<b>不可復原</b>，需輸入上線密碼。
+      </div>
+      <button class="btn-secondary" style="border-color:var(--red);color:var(--red-text);" onclick="doGoLive()"><i class="ti ti-rocket"></i> 一鍵正式上線（清空測試資料＋切正式）</button>
+    </div>
   `;
+}
+
+async function doGoLive() {
+  const pass = prompt('⚠ 一鍵正式上線\n會「清空所有選屋／合併資料」並「切換成正式版」，不可復原。\n請輸入上線密碼確認：');
+  if (pass === null) return;
+  if (pass.trim() !== '0988664330') { alert('密碼錯誤，未執行任何動作。'); return; }
+  if (!confirm('最後確認：將清空 selections + merge_groups、participate 全還原、切換正式版。\n確定執行？')) return;
+  try {
+    const r = await apiPost('goLive', { password: pass.trim() });
+    alert(`✅ 已正式上線！\n清空選配 ${r.selCleared} 筆、合併 ${r.mCleared} 組、還原參與 ${r.pFixed} 位。\n環境：正式版`);
+    location.reload();
+  } catch(e) { alert('失敗：' + e.message); }
 }
 
 async function saveStages() {
