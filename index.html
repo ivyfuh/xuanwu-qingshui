@@ -539,6 +539,7 @@ function getSelForOwner(ownerId) {
 }
 
 function ownerStatus(owner, sel) {
+  if (owner && (owner.participate==='false'||owner.participate===false||owner.participate==='post')) return 'nonpart';
   if (!sel) return 'none';
   if (sel.is_over_limit) return 'over';
   // check duplicate
@@ -636,7 +637,7 @@ function renderOwnerList() {
     const sel = selOf(o.owner_id);
     const nonpart = (o.participate==='false'||o.participate===false||o.participate==='post');
     const prog = progOf(o.owner_id);
-    if (f === 'selected'    && (!sel || sel.status!=='confirmed' || nonpart)) return false;  // 已完成=正式登錄(confirmed)，與上方統計一致
+    if (f === 'selected'    && !(nonpart || (sel && sel.status==='confirmed'))) return false;  // 已完成=正式登錄 或 不參與(已定案)，與上方統計一致
     if (f === 'unselected'  && (sel && !nonpart ? sel.status!=='draft' : false) ) { /* keep drafts/none */ }
     if (f === 'unselected'  && (nonpart || (sel && sel.status==='confirmed'))) return false;
     if (f === 'incomplete') {
@@ -671,13 +672,13 @@ function renderOwnerList() {
   // 全案統計（不受篩選影響）
   const all  = STATE.owners;
   const participating = all.filter(o => !(o.participate==='false'||o.participate===false||o.participate==='post'));
-  const selectedCount = participating.filter(o => {
+  const confirmedCount = participating.filter(o => {
     const s = selOf(o.owner_id); return s && s.status==='confirmed';
   }).length;
   const nonpartCount = all.filter(o => (o.participate==='false'||o.participate===false||o.participate==='post')).length;
-  // 尚未選屋 = 地主總數 − 已完成 − 不參與；確保「總數 = 已完成 + 尚未 + 不參與」永遠兜得起來
-  // （草稿、需改選、未登記等都歸入「尚未」，避免有人落在三個數字之外）
-  const unselectedCount = all.length - selectedCount - nonpartCount;
+  // 已完成選屋 = 正式選配 + 不參與(已定案)；尚未 = 還沒決定的。確保「已完成 + 尚未 = 總數」
+  const selectedCount   = confirmedCount + nonpartCount;
+  const unselectedCount = all.length - selectedCount;
   const incompleteCount = all.filter(o => {
     const s = selOf(o.owner_id);
     const np = (o.participate==='false'||o.participate===false||o.participate==='post');
@@ -817,8 +818,9 @@ function renderOwnerDetail(ownerId) {
   const st     = ownerStatus(owner, sel);
   const barColor = total > limit ? 'var(--red)' : pct > 90 ? 'var(--orange)' : 'var(--green)';
 
-  const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft' };
-  const stLabel = { ok:'正式', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未登記' };
+  const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft', nonpart:'badge-draft' };
+  const stLabel = { ok:'正式', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未登記',
+                    nonpart: (owner.participate==='post'?'不參與(後)':'不參與(前)') };
 
   const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
   const parkNos = sel ? (Array.isArray(sel.parking_nos) ? sel.parking_nos : JSON.parse(sel.parking_nos||'[]')) : [];
