@@ -2314,8 +2314,10 @@ function openMergeModal(groupId) {
     ids.forEach(oid => { MERGE_STATE.frac[oid] = gf[oid] || { num: 1, den: 1 }; });
     (group.members || []).forEach(m => { MERGE_STATE.invest[m.owner_id] = Number(m.invested) || 0; });
     MERGE_STATE.selectedMembers = ids;
+    MERGE_STATE.manualFrac = Object.keys(gf).length > 0;  // 有存分數→沿用；沒有→自動套剩餘值
   } else {
     MERGE_STATE.selectedMembers = [];
+    MERGE_STATE.manualFrac = false;   // 新增組：預設按剩餘值分攤
   }
   MERGE_STATE.mergeTotal = 0;  // 選配總價（試算後更新）
   // 編輯既有組：保留原投入（手動模式）；新增組：自動分攤模式
@@ -2400,17 +2402,17 @@ function renderMergeCandidates() {
 }
 
 function resetMergeAuto() {
-  MERGE_STATE.frac = {};          // 全部回到等分（每人 1/1）
-  MERGE_STATE.manualInvest = false;
+  MERGE_STATE.frac = {};
+  MERGE_STATE.manualFrac = false;   // 回到「按剩餘值自動分攤」
   recalcMerge();
 }
 
-// 改某人的「分子」或「分母」→ 重算登記數值
+// 改某人的「分子」或「分母」→ 標記手動、重算登記數值
 function setMergeFracPart(ownerId, part, val) {
   if (!MERGE_STATE.frac[ownerId]) MERGE_STATE.frac[ownerId] = { num: 1, den: 1 };
   if (val === '') MERGE_STATE.frac[ownerId][part] = '';
   else MERGE_STATE.frac[ownerId][part] = Math.max(part === 'den' ? 1 : 0, Number(val) || 0);
-  MERGE_STATE.manualInvest = true;
+  MERGE_STATE.manualFrac = true;    // 改了就用手動值，不再自動套剩餘值
   recalcMerge(true);   // 只更新登記數值，不重畫分子/分母框（保住游標）
 }
 
@@ -2423,8 +2425,9 @@ function toggleMergeMember(ownerId) {
   } else {
     MERGE_STATE.selectedMembers.push(ownerId);
   }
-  renderMergeCandidates();
+  MERGE_STATE.manualFrac = false;   // 成員變動 → 重新按剩餘值預設分攤
   recalcMerge();
+  renderMergeCandidates();
 }
 
 // 改某人金額
@@ -2496,6 +2499,24 @@ function autoDistributeInvest(total) {
   });
 }
 
+// 預設分數：按各人剩餘權值比例，自動約分成最簡分數（加總=1）
+function defaultFracsByRemaining(members) {
+  const frac = {};
+  const n = members.length || 1;
+  const rem = members.map(oid => Math.max(0, Math.round(Number(MERGE_STATE.usage[oid]?.remaining) || 0)));
+  const totalRem = rem.reduce((s, r) => s + r, 0);
+  if (totalRem <= 0) {                       // 沒有剩餘值就均分
+    members.forEach(oid => frac[oid] = { num: 1, den: n });
+    return frac;
+  }
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  let g = rem[0]; for (let i = 1; i < rem.length; i++) g = gcd(g, rem[i]);
+  g = g || 1;
+  const den = Math.round(totalRem / g);
+  members.forEach((oid, i) => frac[oid] = { num: Math.round(rem[i] / g), den: den });
+  return frac;
+}
+
 // 重新計算選配總價 + 出資 + 檢核
 function recalcMerge(skipAmountRender) {
   const unitMap = MERGE_STATE.unitMap || {};
@@ -2511,25 +2532,27 @@ function recalcMerge(skipAmountRender) {
 
   const members = MERGE_STATE.selectedMembers;
 
-  // 每位成員的「分子/分母」權重（預設等分 1/1）；移除非成員的
+  // 分子/分母：移除非成員的
   MERGE_STATE.frac = MERGE_STATE.frac || {};
-  members.forEach(oid => { if (!MERGE_STATE.frac[oid]) MERGE_STATE.frac[oid] = { num: 1, den: 1 }; });
   Object.keys(MERGE_STATE.frac).forEach(oid => { if (!members.includes(oid)) delete MERGE_STATE.frac[oid]; });
+  // 未手動調整 → 預設按各人剩餘權值比例（自動約分，加總=1）
+  if (!MERGE_STATE.manualFrac) {
+    MERGE_STATE.frac = defaultFracsByRemaining(members);
+  } else {
+    members.forEach(oid => { if (!MERGE_STATE.frac[oid]) MERGE_STATE.frac[oid] = { num: 1, den: 1 }; });
+  }
 
-  // 權重正規化 → 各人佔比 → 登記數值(金額) = 佔比 × 選配總價（同分數必同佔比）
-  const weights = members.map(oid => {
-    const f = MERGE_STATE.frac[oid] || { num: 1, den: 1 };
+  // 登記數值 = (分子/分母) × 選配總價（照字面，不正規化）；同時算分數加總供檢核
+  let fracSum = 0;
+  members.forEach(oid => {
+    const f = MERGE_STATE.frac[oid] || { num: 0, den: 1 };
     const den = Number(f.den) || 0;
-    return den > 0 ? (Number(f.num) || 0) / den : 0;
+    const fr = den > 0 ? (Number(f.num) || 0) / den : 0;
+    fracSum += fr;
+    MERGE_STATE.invest[oid] = Math.round(fr * total);
   });
-  const wSum = weights.reduce((s, w) => s + w, 0) || 1;
-  MERGE_STATE.ratio = {};
-  members.forEach((oid, i) => {
-    const ratio = weights[i] / wSum;
-    MERGE_STATE.ratio[oid] = ratio;
-    MERGE_STATE.invest[oid] = Math.round(ratio * total);
-  });
-  const investTotal = total;  // 登記數值加總 = 選配總價
+  MERGE_STATE.fracSum = fracSum;
+  const investTotal = total;
 
   // 已選組員 chips 顯示在上方
   const chipsEl = document.getElementById('merge-selected-chips');
@@ -2616,6 +2639,11 @@ function recalcMerge(skipAmountRender) {
   if (!hasMembers) problems.push('合併組至少需要 2 人');
   if (!hasSelection) problems.push('請輸入選配戶別或車位');
   if (overLimit) problems.push(`選配總價 NT$${fmt(total)} 超過合併上限 NT$${fmt(combinedLimit)}（各人剩餘×110%加總），不能選`);
+  // 分數加總必須剛好 = 1（100%）
+  if (hasMembers) {
+    const fs = MERGE_STATE.fracSum || 0;
+    if (Math.abs(fs - 1) > 0.005) problems.push(`各人分數加總為 ${(fs*100).toFixed(1)}%，需湊到剛好 100%（加總=1）才能送出`);
+  }
 
   const canSubmit = problems.length === 0;
 
@@ -2666,6 +2694,8 @@ async function submitMerge() {
   }, 0);
   if (members.length < 2) { alert('合併組至少需要 2 人'); return; }
   if (!units.length && !parks.length) { alert('請輸入選配戶別或車位'); return; }
+  const fracSum = MERGE_STATE.fracSum || 0;
+  if (Math.abs(fracSum - 1) > 0.005) { alert(`各人分數加總為 ${(fracSum*100).toFixed(1)}%，需湊到剛好 100%（加總=1）才能送出`); return; }
   const mergeTotal = MERGE_STATE.mergeTotal || 0;
   if (mergeTotal > combinedLimit2) { alert(`選配總價超過合併上限 NT$${fmt(combinedLimit2)}，不能送出`); return; }
 
