@@ -451,9 +451,38 @@ async function loadAll() {
     loadSelections(),
     loadDocStatus(),
     preloadUnitParking(),   // ← 新增，背景預載
+    loadMergeData(),        // ← 載入合併組，讓地主明細能算合併投入（#22 雙向同步）
   ]);
   renderOwnerList();
   updateSidebar();
+}
+
+// 輕量載入合併組 + 使用率（不渲染合併清單，供地主明細計算用）
+async function loadMergeData() {
+  try {
+    const [usage, groups] = await Promise.all([
+      apiGet('getOwnerUsage').catch(() => ({})),
+      apiGet('getMergeGroups').catch(() => []),
+    ]);
+    MERGE_STATE.usage  = usage  || {};
+    MERGE_STATE.groups = Array.isArray(groups) ? groups : [];
+  } catch(e) { console.error('loadMergeData', e); }
+}
+
+// 該地主在所有合併組的投入金額 + 合併選到的戶別/車位（供明細顯示）
+function getMergeInfoForOwner(ownerId) {
+  const oid = String(ownerId);
+  let invested = 0; const units = []; const parks = []; const gids = [];
+  (MERGE_STATE.groups || []).forEach(g => {
+    const ids = (g.owner_ids || (g.members||[]).map(m => m.owner_id)).map(String);
+    if (!ids.includes(oid)) return;
+    const m = (g.members||[]).find(x => String(x.owner_id) === oid);
+    invested += m ? (Number(m.invested)||0) : 0;
+    (g.unit_nos||[]).forEach(u => units.push(u));
+    (g.parking_nos||[]).forEach(p => parks.push(p));
+    gids.push(g.group_id);
+  });
+  return { invested, units, parks, gids, inMerge: gids.length > 0 };
 }
 
 async function loadDocStatus() {
@@ -812,15 +841,19 @@ function renderOwnerDetail(ownerId) {
 
   const rights = Number(owner.rights_value) || 0;
   const limit  = Number(owner.upper_limit) || 0;
-  const total  = sel ? (Number(sel.total_value) || 0) : 0;
+  const personalTotal = sel ? (Number(sel.total_value) || 0) : 0;
+  // #22 合併同步：把該地主在合併組的投入也算進總額/找補/使用率
+  const mInfo = getMergeInfoForOwner(ownerId);
+  const total  = personalTotal + mInfo.invested;
   const settle = total - rights;
   const pct    = limit > 0 ? Math.min(100, Math.round(total / limit * 100)) : 0;
   const rightsPct = limit > 0 ? Math.round(rights / limit * 100) : 0;  // 權利價值(100%)在長條上的位置；上限(110%)=條尾
-  const st     = ownerStatus(owner, sel);
+  let st       = ownerStatus(owner, sel);
+  if (st === 'none' && mInfo.inMerge) st = 'merge';  // 只做合併、沒個人選配 → 顯示「合併選配」而非「未登記」
   const barColor = total > limit ? 'var(--red)' : pct > 90 ? 'var(--orange)' : 'var(--green)';
 
-  const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft', nonpart:'badge-draft' };
-  const stLabel = { ok:'正式', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未登記',
+  const stMap = { ok:'badge-ok', draft:'badge-draft', dup:'badge-dup', over:'badge-over', resel:'badge-resel', none:'badge-draft', nonpart:'badge-draft', merge:'badge-ok' };
+  const stLabel = { ok:'正式', draft:'草稿', dup:'重複', over:'超選', resel:'需改選', none:'未登記', merge:'合併選配',
                     nonpart: (owner.participate==='post'?'不參與(後)':'不參與(前)') };
 
   const unitNos = sel ? (Array.isArray(sel.unit_nos) ? sel.unit_nos : JSON.parse(sel.unit_nos||'[]')) : [];
@@ -881,8 +914,16 @@ function renderOwnerDetail(ownerId) {
       </div>
     </div>
 
-    <div class="text-xs text-muted mb-4">選配內容</div>
+    <div class="text-xs text-muted mb-4">選配內容（個人）</div>
     ${unitRows}${parkRows}
+    ${mInfo.inMerge ? `
+    <div class="text-xs text-muted mb-4 mt-12" style="display:flex;justify-content:space-between;align-items:center;">
+      <span><i class="ti ti-users"></i> 合併選配（${mInfo.gids.join('、')}）</span>
+      <span style="color:var(--accent-text);font-weight:500;">投入 NT$${fmt(mInfo.invested)}</span>
+    </div>
+    ${mInfo.units.map(u => `<div class="flex justify-between text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);"><span style="font-weight:500;">🏠 ${u}</span><span class="text-xs" style="color:var(--accent-text);">合併</span></div>`).join('')}
+    ${mInfo.parks.map(p => `<div class="flex justify-between text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);"><span>🚗 ${p}</span><span class="text-xs" style="color:var(--accent-text);">合併</span></div>`).join('')}
+    ` : ''}
 
     ${(owner.participate==='false'||owner.participate===false||owner.participate==='post') ? `
     <div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;margin-top:12px;font-size:12px;color:var(--ts);text-align:center;">
