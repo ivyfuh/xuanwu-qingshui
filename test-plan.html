@@ -39,6 +39,11 @@
   .bar button{border:1px solid #5C7280;background:#5C7280;color:#fff;border-radius:7px;padding:8px 14px;font-size:13px;cursor:pointer;}
   .bar button.ghost{background:#fff;color:#5C7280;}
   .hide{display:none;}
+  .launch-row{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;}
+  .launch-row a{display:inline-flex;align-items:center;gap:6px;background:#0F6E56;color:#fff;text-decoration:none;border-radius:8px;padding:11px 20px;font-size:15px;font-weight:600;}
+  .launch-row a.alt{background:#3A6EA5;}
+  .launch{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.92);color:#3D4F58;text-decoration:none;border-radius:14px;padding:3px 11px;font-size:12px;font-weight:600;}
+  .launch:hover{background:#fff;}
   textarea#out{position:fixed;left:-9999px;}
   .toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);background:#2c333a;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;}
   .toast.show{opacity:1;}
@@ -52,6 +57,8 @@
 <div class="pre">
   <b>⚠ 測試前置</b>：①Code.gs 已<b>部署新版本</b> ②後台跑過 <b>resetAndSeedTest</b> ③前後台 <b>Ctrl+Shift+R</b>。沒做這三步會測不準。
 </div>
+
+<div class="launch-row" id="launch-row"></div>
 
 <div class="who" id="who"></div>
 
@@ -82,6 +89,11 @@ async function apiPost(action, body){
   if (d.status !== 'ok') throw new Error('API error');
   return d.data;
 }
+
+// 要測的頁面網址（相對於本頁所在資料夾，部署到哪都對）
+const SITE   = location.origin + location.pathname.replace(/test-plan\.html$/, '');
+const ADMIN  = SITE + 'index.html';
+const PUBLIC = SITE + 'public.html';
 
 const PLAN = [
   { key:'yl', name:'曜霖', area:'合併選配（核心）', items:[
@@ -139,6 +151,9 @@ function nameOf(){ return meName || '訪客'; }
 function hhmm(iso){ return iso ? String(iso).slice(11,16) : ''; }
 
 function render(){
+  document.getElementById('launch-row').innerHTML =
+    `<a href="${ADMIN}" target="_blank">▶ 後台管理系統</a>` +
+    `<a class="alt" href="${PUBLIC}" target="_blank">▶ 公開頁（地主端）</a>`;
   document.getElementById('who').innerHTML =
     '<span style="font-size:13px;color:#7a848c;">我是：</span>' +
     PLAN.map(p => `<button class="${me===p.key?'active':''}" onclick="setMe('${p.key}')">${p.name}</button>`).join('') +
@@ -146,6 +161,9 @@ function render(){
 
   document.getElementById('plan').innerHTML = PLAN.map(p => {
     const show = (me==='' || me===p.key);
+    const isPub = p.key==='jy';
+    let launch = `<a class="launch" href="${isPub?PUBLIC:ADMIN}" target="_blank" onclick="event.stopPropagation()">▶ ${isPub?'公開頁':'後台'}</a>`;
+    if(isPub) launch += `<a class="launch" href="${PUBLIC}?cd=5" target="_blank" onclick="event.stopPropagation()">剩5天</a><a class="launch" href="${PUBLIC}?cd=2" target="_blank" onclick="event.stopPropagation()">剩2天</a>`;
     const rows = p.items.map((it,i)=>{
       const id = p.key+'-'+i; const s = st(id);
       return `<div class="item ${s.c?'done':''}" data-item="${id}">
@@ -166,7 +184,7 @@ function render(){
     return `<div class="sec ${show?'':'hide'}" data-k="${p.key}">
       <div class="sec-h" onclick="jump('${p.key}')">
         <div><span class="nm">${p.name}</span><span class="ar">${p.area}</span></div>
-        <span class="pg" data-pg="${p.key}">0 / ${p.items.length}</span>
+        <div style="display:flex;gap:6px;align-items:center;">${launch}<span class="pg" data-pg="${p.key}">0 / ${p.items.length}</span></div>
       </div>
       <div class="sec-b">${rows}</div>
     </div>`;
