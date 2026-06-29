@@ -2295,6 +2295,9 @@ async function printApplication(ownerId) {
   const rocMonth = today.getMonth() + 1;
   const rocDay = today.getDate();
   const bgUrl = location.origin + location.pathname.replace(/[^/]*$/, '') + 'form-bg.png';
+  const _gl = Array.from({length:21}, (_,i)=>i*5);   // 校正格線標籤（每5%）
+  const calTop  = _gl.map(p=>`<span style="position:absolute;top:1px;left:${p}%;font-size:8px;color:#c00;">${p}</span>`).join('');
+  const calLeft = _gl.map(p=>`<span style="position:absolute;left:1px;top:${p}%;font-size:8px;color:#06c;">${p}</span>`).join('');
 
   const html = `
 <!DOCTYPE html>
@@ -2311,7 +2314,7 @@ async function printApplication(ownerId) {
   .ov { position: absolute; font-weight: bold; font-size: 12pt; letter-spacing: 1px; white-space: nowrap; }
   .ovc { text-align: center; }
   .ovn { font-weight: normal; font-size: 11pt; letter-spacing: 0; }
-  @media print { .no-print { display: none; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print { .no-print { display: none; } #cal { display: none !important; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   .no-print { position: fixed; top: 10px; right: 10px; z-index: 9; }
   .no-print button { font-size: 14px; padding: 8px 18px; margin-left: 6px; cursor: pointer;
     border-radius: 6px; border: none; background: #748B97; color: #fff; }
@@ -2320,6 +2323,7 @@ async function printApplication(ownerId) {
 <body>
   <div class="no-print">
     <button onclick="window.print()">🖨 列印</button>
+    <button onclick="(function(){var c=document.getElementById('cal');c.style.display=(c.style.display==='none'?'block':'none');})()" style="background:#0F6E56;">校正格線</button>
     <button onclick="window.close()" style="background:#9FA0A0;">關閉</button>
   </div>
 
@@ -2334,14 +2338,18 @@ async function printApplication(ownerId) {
     <div class="ov" style="top:39.7%;left:9%;width:50%;overflow:hidden;">${parkNos.join('、 ')}</div>
     <!-- 車位數（等，共 X 部） -->
     <div class="ov ovc" style="top:39.7%;left:69.5%;width:9%;">${parkNos.length || ''}</div>
+    <!-- 身分證明碼（id_plain，需後端部署＋重新輸入身分證才有值） -->
+    <div class="ov ovn" style="top:76.8%;left:27%;width:60%;overflow:hidden;">${owner.id_plain||''}</div>
     <!-- 聯絡地址 -->
-    <div class="ov ovn" style="top:80.4%;left:28%;width:62%;overflow:hidden;">${owner.address||''}</div>
+    <div class="ov ovn" style="top:80.2%;left:28%;width:62%;overflow:hidden;">${owner.address||''}</div>
     <!-- 聯絡電話 -->
-    <div class="ov ovn" style="top:85.2%;left:18%;width:65%;overflow:hidden;">${owner.phone||''}</div>
+    <div class="ov ovn" style="top:85.0%;left:18%;width:65%;overflow:hidden;">${owner.phone||''}</div>
     <!-- 日期：民國年 / 月 / 日（自動帶列印當天） -->
-    <div class="ov ovc" style="top:90.4%;left:48%;width:8%;">${rocYear}</div>
-    <div class="ov ovc" style="top:90.4%;left:72%;width:7%;">${rocMonth}</div>
-    <div class="ov ovc" style="top:90.4%;left:89%;width:7%;">${rocDay}</div>
+    <div class="ov ovc" style="top:89.6%;left:50%;width:8%;">${rocYear}</div>
+    <div class="ov ovc" style="top:89.6%;left:73%;width:7%;">${rocMonth}</div>
+    <div class="ov ovc" style="top:89.6%;left:90%;width:7%;">${rocDay}</div>
+    <!-- 校正格線（按鈕切換，列印不出現）；紅=橫向%、藍=縱向% -->
+    <div id="cal" style="display:none;position:absolute;inset:0;background-image:repeating-linear-gradient(to right,rgba(204,0,0,.18) 0 1px,transparent 1px 5%),repeating-linear-gradient(to bottom,rgba(0,102,204,.18) 0 1px,transparent 1px 5%);">${calTop}${calLeft}</div>
   </div>
 </body>
 </html>`;
