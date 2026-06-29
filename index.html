@@ -2294,10 +2294,6 @@ async function printApplication(ownerId) {
   const rocYear = today.getFullYear() - 1911;
   const rocMonth = today.getMonth() + 1;
   const rocDay = today.getDate();
-  const bgUrl = location.origin + location.pathname.replace(/[^/]*$/, '') + 'form-bg.png';
-  const _gl = Array.from({length:21}, (_,i)=>i*5);   // 校正格線標籤（每5%）
-  const calTop  = _gl.map(p=>`<span style="position:absolute;top:1px;left:${p}%;font-size:8px;color:#c00;">${p}</span>`).join('');
-  const calLeft = _gl.map(p=>`<span style="position:absolute;left:1px;top:${p}%;font-size:8px;color:#06c;">${p}</span>`).join('');
 
   const html = `
 <!DOCTYPE html>
@@ -2306,16 +2302,31 @@ async function printApplication(ownerId) {
 <meta charset="UTF-8">
 <title>更新後分配位置申請書 - ${owner.name}</title>
 <style>
-  @page { size: A4; margin: 0; }
-  html, body { margin: 0; padding: 0; }
-  .page { position: relative; width: 21cm; height: 29.7cm; margin: 0 auto;
-    background: url('${bgUrl}') no-repeat; background-size: 100% 100%;
-    font-family: "DFKai-SB","BiauKai","標楷體",serif; color: #000; }
-  .ov { position: absolute; font-weight: bold; font-size: 12pt; letter-spacing: 1px; white-space: nowrap; }
-  .ovc { text-align: center; }
-  .ovn { font-weight: normal; font-size: 11pt; letter-spacing: 0; }
-  @media print { .no-print { display: none; } #cal { display: none !important; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-  .no-print { position: fixed; top: 10px; right: 10px; z-index: 9; }
+  @page { size: A4; margin: 1.4cm 1.8cm; }
+  * { box-sizing: border-box; }
+  body { font-family: "DFKai-SB","BiauKai","標楷體","Noto Serif TC",serif; font-size: 14.5px; line-height: 1.7; color: #000; }
+  .doc-tag { text-align: right; font-weight: bold; font-size: 13px; }
+  .title { text-align: center; font-weight: bold; line-height: 1.6; margin: 4px 0 12px; font-size: 16px; }
+  .note { font-size: 13px; line-height: 1.7; margin: 2px 0; text-align: justify; }
+  .sub1 { padding-left: 1.7em; }
+  .filler { margin: 8px 0 10px; }
+  .section { font-weight: bold; margin: 9px 0 3px; }
+  .fill-line { border-bottom: 1px solid #000; display: inline-block; min-width: 48px; padding: 0 6px; text-align: center; font-weight: bold; }
+  .big-fill { display: block; border-bottom: 1px solid #000; min-height: 22px; padding: 3px 8px; margin: 4px 0; font-weight: bold; font-size: 15px; letter-spacing: 1px; }
+  .fill-row { display: flex; align-items: flex-end; margin: 6px 0; }
+  .ul-grow { flex: 1; border-bottom: 1px solid #000; min-height: 1.5em; padding: 0 6px; margin-right: 8px; font-weight: bold; font-size: 15px; letter-spacing: 1px; white-space: nowrap; }
+  .sign-row { display: flex; align-items: flex-end; margin: 8px 0; }
+  .ul { flex: 1; border-bottom: 1px solid #000; min-height: 1.5em; padding: 0 6px; margin-left: 6px; }
+  .note-box { border: 1px solid #000; padding: 6px 12px; margin-top: 8px; font-size: 12.5px; line-height: 1.5; break-inside: avoid; }
+  .note-1 { margin: 1px 0; }
+  .note-sub { padding-left: 1.8em; text-indent: -1.6em; margin: 1px 0; }
+  .sign-area { margin-top: 14px; line-height: 2.2; break-inside: avoid; }
+  .sign-line { display: inline-block; min-width: 280px; }
+  .small { font-size: 13px; }
+  .sub { padding-left: 1.9em; }
+  .foot { text-align: center; margin-top: 14px; font-size: 13px; }
+  @media print { .no-print { display: none; } }
+  .no-print { position: fixed; top: 12px; right: 12px; }
   .no-print button { font-size: 14px; padding: 8px 18px; margin-left: 6px; cursor: pointer;
     border-radius: 6px; border: none; background: #748B97; color: #fff; }
 </style>
@@ -2323,34 +2334,46 @@ async function printApplication(ownerId) {
 <body>
   <div class="no-print">
     <button onclick="window.print()">🖨 列印</button>
-    <button onclick="(function(){var c=document.getElementById('cal');c.style.display=(c.style.display==='none'?'block':'none');})()" style="background:#0F6E56;">校正格線</button>
     <button onclick="window.close()" style="background:#9FA0A0;">關閉</button>
   </div>
 
-  <div class="page">
-    <!-- 單元編號（疊在底線上） -->
-    <div class="ov" style="top:28.6%;left:9%;width:50%;overflow:hidden;">${unitNos.join('、 ')}</div>
-    <!-- 單元數（等，共 X 個單元） -->
-    <div class="ov ovc" style="top:28.6%;left:69.5%;width:9%;">${unitNos.length || ''}</div>
-    <!-- 車位數（汽車停車位 X 位） -->
-    <div class="ov ovc" style="top:34.5%;left:41%;width:9%;">${parkNos.length || ''}</div>
-    <!-- 車位代碼 -->
-    <div class="ov" style="top:39.7%;left:9%;width:50%;overflow:hidden;">${parkNos.join('、 ')}</div>
-    <!-- 車位數（等，共 X 部） -->
-    <div class="ov ovc" style="top:39.7%;left:69.5%;width:9%;">${parkNos.length || ''}</div>
-    <!-- 身分證明碼（id_plain，需後端部署＋重新輸入身分證才有值） -->
-    <div class="ov ovn" style="top:76.8%;left:27%;width:60%;overflow:hidden;">${owner.id_plain||''}</div>
-    <!-- 聯絡地址 -->
-    <div class="ov ovn" style="top:80.2%;left:28%;width:62%;overflow:hidden;">${owner.address||''}</div>
-    <!-- 聯絡電話 -->
-    <div class="ov ovn" style="top:85.0%;left:18%;width:65%;overflow:hidden;">${owner.phone||''}</div>
-    <!-- 日期：民國年 / 月 / 日（自動帶列印當天） -->
-    <div class="ov ovc" style="top:89.6%;left:50%;width:8%;">${rocYear}</div>
-    <div class="ov ovc" style="top:89.6%;left:73%;width:7%;">${rocMonth}</div>
-    <div class="ov ovc" style="top:89.6%;left:90%;width:7%;">${rocDay}</div>
-    <!-- 校正格線（按鈕切換，列印不出現）；紅=橫向%、藍=縱向% -->
-    <div id="cal" style="display:none;position:absolute;inset:0;background-image:repeating-linear-gradient(to right,rgba(204,0,0,.18) 0 1px,transparent 1px 5%),repeating-linear-gradient(to bottom,rgba(0,102,204,.18) 0 1px,transparent 1px 5%);">${calTop}${calLeft}</div>
+  <div class="doc-tag"><span style="border:1px solid #000;padding:1px 10px;">附件三</span></div>
+  <div class="title">「擬訂新北市土城區清水段103地號1筆土地都市更新事業計畫暨權利變換計畫案」<br>更新後分配位置申請書</div>
+
+  <div class="filler">填寫人：<span class="fill-line" style="min-width:200px;"></span></div>
+
+  <div class="small">本人願意參與分配，茲就實施者所提供更新後各分配單元面積位置對照表及更新後配置圖、各樓層平面圖，申請分配下列單元及車位位置。</div>
+
+  <div class="section">一、分配單元部份：</div>
+  <div class="small sub">本人申請分配單元之「單元編號」為：<b>（舉例：如選取5樓B8戶，則單元編號請填寫「5F-B8」）</b></div>
+  <div class="fill-row"><span class="ul-grow">${unitNos.join('、 ')}</span>等，共 <span class="fill-line">${unitNos.length}</span> 個單元。</div>
+
+  <div class="section">二、汽車停車位部份：</div>
+  <div class="small sub">本人共申請分配汽車停車位 <span class="fill-line">${parkNos.length}</span> 位，其「車位位置代碼」為：<b>（舉例：如選取地下三樓編號160之車位，則車位編號請填寫「B3-160」）</b></div>
+  <div class="fill-row"><span class="ul-grow">${parkNos.join('、 ')}</span>等，共 <span class="fill-line">${parkNos.length}</span> 部。</div>
+
+  <div class="note-box">
+  <div class="note">說明：</div>
+  <div class="note">1.權利變換調查與申請分配</div>
+  <div class="note sub1">（1）若有區分所有權人同時申請同一分配單元，則以公開抽籤決定之。</div>
+  <div class="note sub1">（2）實際分配價值為分配單元與停車位加總，若較應分配價值為多時，需依實際分配價值核計，補繳差額價金；若較應分配價值為少時，則依實際分配價值核計，領取差額價金。實際選配後找補以不超過1個分配單元為原則。</div>
+  <div class="note">2.本表請於民國115年7月31日（星期五）下午5時前以雙掛號郵寄或親自送達漢吉建設股份有限公司(新北市中和區中山路二段299號1樓)，未於規定期限內表達意願者，基於保障原住戶重回更新地區居住之權益，並減少實施都市更新事業時之阻力，視同願意參與權利變換分配，實施者將依都市更新權利變換實施辦法第17條規定，以公開抽籤方式分配之。預定公開抽籤日之時間訂為民國115年8月12日(星期三)下午6時30分，地點為新北市土城區清水國小慈愛樓5F視聽教室(新北市土城區金城路二段356號)。</div>
+  <div class="note">3.以上分配單元及停車位之面積及位置以都市更新審議委員會通過版本為準</div>
   </div>
+
+  <div class="sign-area">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;">
+      <span>所有權人：</span><span>（簽名及蓋章）</span>
+    </div>
+    <div style="margin:10px 0;">身分證字號(統一編號)：</div>
+    <div style="margin:10px 0;">聯絡地址(營業所在地)：${owner.address||''}</div>
+    <div style="margin:10px 0;">聯絡電話：${owner.phone||''}</div>
+    <div style="display:flex;justify-content:space-between;margin-top:18px;letter-spacing:2px;">
+      <span>中　華　民　國</span><span>${rocYear}　年</span><span>${rocMonth}　月</span><span>${rocDay}　日</span>
+    </div>
+  </div>
+
+  <div class="foot">附件三 1/1</div>
 </body>
 </html>`;
 
@@ -2551,8 +2574,7 @@ function renderMergeCandidates() {
 }
 
 function resetMergeAuto() {
-  MERGE_STATE.frac = {};
-  MERGE_STATE.manualFrac = false;   // 回到「按剩餘值自動分攤」
+  MERGE_STATE.manualInvest = false;   // 回到「按剩餘值自動分攤金額」
   recalcMerge();
 }
 
@@ -2598,7 +2620,7 @@ function toggleMergeMember(ownerId) {
     }
     MERGE_STATE.selectedMembers.push(ownerId);
   }
-  MERGE_STATE.manualFrac = false;   // 成員變動 → 重新按剩餘值預設分攤
+  MERGE_STATE.manualInvest = false;   // 成員變動 → 重新按剩餘值自動分攤金額
   recalcMerge();
   renderMergeCandidates();
 }
@@ -2697,6 +2719,20 @@ function defaultFracsByRemaining(members) {
   return frac;
 }
 
+// 由各人「金額」算出分子/分母（共同分母＝選配總價÷最大公因數），分子＝各人金額÷最大公因數
+function fracsFromInvests(members, total) {
+  const frac = {};
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const vals = members.map(oid => Math.max(0, Math.round(Number(MERGE_STATE.invest[oid]) || 0)));
+  if (!(total > 0)) { members.forEach(oid => frac[oid] = { num: 0, den: 1 }); return frac; }
+  let g = Math.round(total);
+  vals.forEach(v => g = gcd(g, v));
+  g = g || 1;
+  const den = Math.round(total / g);
+  members.forEach((oid, i) => frac[oid] = { num: Math.round(vals[i] / g), den: den });
+  return frac;
+}
+
 // 重新計算選配總價 + 出資 + 檢核
 function recalcMerge(skipAmountRender) {
   const unitMap = MERGE_STATE.unitMap || {};
@@ -2712,27 +2748,17 @@ function recalcMerge(skipAmountRender) {
 
   const members = MERGE_STATE.selectedMembers;
 
-  // 分子/分母：移除非成員的
-  MERGE_STATE.frac = MERGE_STATE.frac || {};
-  Object.keys(MERGE_STATE.frac).forEach(oid => { if (!members.includes(oid)) delete MERGE_STATE.frac[oid]; });
-  // 未手動調整 → 預設按各人剩餘權值比例（自動約分，加總=1）
-  if (!MERGE_STATE.manualFrac) {
-    MERGE_STATE.frac = defaultFracsByRemaining(members);
+  // 以「金額」為主：移除非成員的金額
+  MERGE_STATE.invest = MERGE_STATE.invest || {};
+  Object.keys(MERGE_STATE.invest).forEach(oid => { if (!members.includes(oid)) delete MERGE_STATE.invest[oid]; });
+  // 未手動 → 按各人剩餘值自動分攤金額（加總＝選配總價）；手動 → 沿用使用者填的金額
+  if (!MERGE_STATE.manualInvest) {
+    autoDistributeInvest(total);
   } else {
-    members.forEach(oid => { if (!MERGE_STATE.frac[oid]) MERGE_STATE.frac[oid] = { num: 1, den: 1 }; });
+    members.forEach(oid => { if (MERGE_STATE.invest[oid] == null) MERGE_STATE.invest[oid] = 0; });
   }
-
-  // 登記數值 = (分子/分母) × 選配總價（照字面，不正規化）；同時算分數加總供檢核
-  let fracSum = 0;
-  members.forEach(oid => {
-    const f = MERGE_STATE.frac[oid] || { num: 0, den: 1 };
-    const den = Number(f.den) || 0;
-    const fr = den > 0 ? (Number(f.num) || 0) / den : 0;
-    fracSum += fr;
-    MERGE_STATE.invest[oid] = Math.round(fr * total);
-  });
-  MERGE_STATE.fracSum = fracSum;
-  const investTotal = total;
+  // 分子/分母由金額自動算（共同分母＝選配總價÷最大公因數），唯讀顯示
+  MERGE_STATE.frac = fracsFromInvests(members, total);
 
   // 已選組員 chips 顯示在上方
   const chipsEl = document.getElementById('merge-selected-chips');
@@ -2764,30 +2790,23 @@ function recalcMerge(skipAmountRender) {
         return `<div style="display:grid;grid-template-columns:${_gridCols};gap:5px;align-items:center;margin-bottom:6px;">
           <span style="font-size:12px;">${u.name||oid}
             <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(_rem)}）</span></span>
-          <input type="text" inputmode="numeric" class="merge-num" value="${f.num}" oninput="setMergeFracPart('${oid}','num',this.value)" placeholder="分子" style="text-align:center;font-size:13px;padding:7px 2px;height:34px;">
+          <span class="merge-num-disp" style="text-align:center;font-size:13px;font-weight:500;overflow:hidden;" title="由金額自動計算">${f.num}</span>
           <span style="text-align:center;color:var(--tt);font-size:15px;">/</span>
-          <input type="text" inputmode="numeric" class="merge-den" value="${f.den}" oninput="setMergeFracPart('${oid}','den',this.value)" placeholder="分母" style="text-align:center;font-size:13px;padding:7px 2px;height:34px;">
-          <input type="text" inputmode="numeric" class="merge-amt" value="${amt}" oninput="setMergeAmount('${oid}',this.value)" title="可直接輸入金額，分數會自動反推" style="text-align:right;font-size:13px;padding:7px 5px;height:34px;font-weight:500;color:${overRemain?'var(--red-text)':'var(--tp)'};">
+          <span class="merge-den-disp" style="text-align:center;font-size:13px;font-weight:500;overflow:hidden;" title="由金額自動計算">${f.den}</span>
+          <input type="text" inputmode="numeric" class="merge-amt" value="${amt}" oninput="setMergeAmount('${oid}',this.value)" title="填金額，分子/分母自動算" style="text-align:right;font-size:13px;padding:7px 5px;height:34px;font-weight:500;color:${overRemain?'var(--red-text)':'var(--tp)'};">
         </div>`;
       }).join('');
     }
   } else {
-    // 打字中：只更新「另一邊」的欄位值，不重畫整列（保住游標）
+    // 打字中（改金額）：只更新唯讀的分子/分母顯示，不重畫金額框（保住游標）
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
       members.forEach((oid, i) => {
         const rowEl = rowsEl.children[i + 1];   // 第一個是表頭
         if (!rowEl) return;
-        if (skipAmountRender === 'frac') {
-          // 剛改了金額 → 更新分子/分母框
-          const f = MERGE_STATE.frac[oid] || {};
-          const n = rowEl.querySelector('.merge-num'); if (n && document.activeElement !== n) n.value = f.num;
-          const d = rowEl.querySelector('.merge-den'); if (d && document.activeElement !== d) d.value = f.den;
-        } else {
-          // 剛改了分子/分母 → 更新金額框
-          const a = rowEl.querySelector('.merge-amt');
-          if (a && document.activeElement !== a) a.value = MERGE_STATE.invest[oid] || 0;
-        }
+        const f = MERGE_STATE.frac[oid] || {};
+        const n = rowEl.querySelector('.merge-num-disp'); if (n) n.textContent = f.num;
+        const d = rowEl.querySelector('.merge-den-disp'); if (d) d.textContent = f.den;
       });
     }
   }
