@@ -888,7 +888,10 @@ function renderOwnerDetail(ownerId) {
     <div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;margin-top:12px;font-size:12px;color:var(--ts);text-align:center;">
       <i class="ti ti-info-circle"></i> 此地主不參與選配（不願/不能領取更新前價值），無需選位置
     </div>
-    <div class="flex gap-6 mt-12">
+    <button class="btn-primary" style="width:100%;font-size:12px;margin-top:12px;" onclick="restoreParticipate('${ownerId}')">
+      <i class="ti ti-rotate-clockwise"></i> 改為參與選配（之後想選屋／加入合併按這）
+    </button>
+    <div class="flex gap-6 mt-6">
       <button class="btn-secondary flex-1" style="font-size:12px;" onclick="openCallModal('${ownerId}')">
         <i class="ti ti-phone"></i> 記錄通話
       </button>
@@ -1179,6 +1182,25 @@ function toggleNonpart(checkbox, ownerId) {
     inputs.forEach(el => { el.disabled = false; el.style.opacity = '1'; });
     document.getElementById('sel-validation').innerHTML = '';
   }
+}
+
+// 不參與 → 一鍵改回參與選配（之後即可正常選屋／加入合併組）
+async function restoreParticipate(ownerId) {
+  const owner = STATE.owners.find(o => o.owner_id == ownerId);
+  if (!owner) return;
+  if (!confirm(`確定把「${owner.name||ownerId}」改回「參與選配」？\n改回後即可正常選屋、也能加入合併組。`)) return;
+  try {
+    await apiPost('saveOwner', {
+      owner_id: ownerId, name: owner.name||'', phone: owner.phone||'', address: owner.address||'',
+      rights_value: owner.rights_value||0, handler: owner.handler||'',
+      participate: 'true', has_agent: owner.has_agent||'false', agent_name: owner.agent_name||'',
+    });
+    owner.participate = 'true';
+    await loadOwners();
+    renderOwnerList();
+    renderOwnerDetail(ownerId);
+    alert('已改為參與選配，現在可以選屋／加入合併組了。');
+  } catch(e) { alert('失敗：' + e.message); }
 }
 
 function previewSelection(ownerId) {
