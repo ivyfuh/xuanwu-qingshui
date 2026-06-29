@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>清水段選屋系統 — 測試表</title>
+<title>清水段選屋系統 — 測試表（共享）</title>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  body{font-family:"Microsoft JhengHei","PingFang TC",sans-serif;color:#2c333a;line-height:1.55;max-width:900px;margin:0 auto;padding:18px 16px 80px;background:#f6f7f8;}
+  body{font-family:"Microsoft JhengHei","PingFang TC",sans-serif;color:#2c333a;line-height:1.55;max-width:900px;margin:0 auto;padding:18px 16px 84px;background:#f6f7f8;}
   h1{font-size:21px;margin:0 0 2px;color:#3D4F58;}
   .sub{color:#7a848c;font-size:13px;margin-bottom:14px;}
   .pre{background:#FAEEDA;border:1px solid #EF9F27;border-radius:8px;padding:10px 14px;margin:12px 0;font-size:13px;color:#6a4a08;}
   .pre b{color:#854F0B;}
-  .who{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0;}
+  .who{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0;align-items:center;}
   .who button{border:1px solid #b9c2c8;background:#fff;color:#3D4F58;border-radius:18px;padding:6px 16px;font-size:14px;cursor:pointer;}
   .who button.active{background:#5C7280;color:#fff;border-color:#5C7280;}
   .sec{background:#fff;border-radius:10px;margin:12px 0;overflow:hidden;border:1px solid #e3e7ea;}
@@ -28,28 +28,29 @@
   .txt{flex:1;}
   .t{font-size:14.5px;font-weight:500;}
   .e{font-size:12.5px;color:#0F6E56;margin-top:1px;}
+  .by{font-size:11px;color:#9aa3a8;margin-top:1px;min-height:13px;}
   .note{margin:8px 0 0 32px;}
   .note input{width:100%;border:1px solid #ccd2d6;border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit;}
   .note input::placeholder{color:#b3bbc0;}
   .note input.has{border-color:#E24B4A;background:#FFF7F7;}
-  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #dde1e4;padding:10px 16px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #dde1e4;padding:9px 16px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
   .bar .gp{font-size:13px;color:#3D4F58;}
+  .bar .sync{font-size:11.5px;color:#9aa3a8;}
   .bar button{border:1px solid #5C7280;background:#5C7280;color:#fff;border-radius:7px;padding:8px 14px;font-size:13px;cursor:pointer;}
   .bar button.ghost{background:#fff;color:#5C7280;}
   .hide{display:none;}
-  .tag{display:inline-block;background:#E1F5EE;color:#0F6E56;border-radius:4px;padding:0 6px;font-size:11px;margin-left:6px;}
   textarea#out{position:fixed;left:-9999px;}
-  .toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#2c333a;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;}
+  .toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);background:#2c333a;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;}
   .toast.show{opacity:1;}
 </style>
 </head>
 <body>
 
-<h1>清水段選屋系統 — 測試表</h1>
-<div class="sub">2026/06/29　·　勾選後自動儲存（存在本機瀏覽器）·　有問題寫在備註欄</div>
+<h1>清水段選屋系統 — 測試表 <span style="font-size:13px;color:#0F6E56;">● 共享即時</span></h1>
+<div class="sub">2026/06/29　·　大家的勾選與備註會即時同步，子瑄後台也看得到（每15秒自動刷新）</div>
 
 <div class="pre">
-  <b>⚠ 測試前置</b>：①Code.gs 已<b>部署新版本</b> ②後台跑過 <b>resetAndSeedTest</b> ③前後台 <b>Ctrl+Shift+R</b> 強制重整。沒做這三步會測不準。
+  <b>⚠ 測試前置</b>：①Code.gs 已<b>部署新版本</b> ②後台跑過 <b>resetAndSeedTest</b> ③前後台 <b>Ctrl+Shift+R</b>。沒做這三步會測不準。
 </div>
 
 <div class="who" id="who"></div>
@@ -57,8 +58,9 @@
 <div id="plan"></div>
 
 <div class="bar">
-  <span class="gp" id="gp">整體進度 0 / 0</span>
+  <div><span class="gp" id="gp">整體進度 0 / 0</span> <span class="sync" id="sync">連線中…</span></div>
   <div style="display:flex;gap:8px;">
+    <button class="ghost" onclick="refreshNow()">立即刷新</button>
     <button class="ghost" onclick="copyMine()">複製我的回報</button>
     <button onclick="copyAll()">複製全部回報</button>
   </div>
@@ -67,6 +69,20 @@
 <div class="toast" id="toast"></div>
 
 <script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbz2oTXAMAVHdMBmtk5y3wJQRQ03Rf5y6AbG5K79wRuIpQIihENevTDRADcTnc99CZ4MPg/exec';
+async function apiGet(action){
+  const res = await fetch(`${API_URL}?action=${action}`);
+  const d = await res.json();
+  return d.status === 'ok' ? d.data : null;
+}
+async function apiPost(action, body){
+  const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ action, ...body }) });
+  const d = await res.json();
+  if (d.status !== 'ok') throw new Error('API error');
+  return d.data;
+}
+
 const PLAN = [
   { key:'yl', name:'曜霖', area:'合併選配（核心）', items:[
     {t:'開「合併管理」看既有兩組', e:'顯示 2人 / 3人，不再是 0人合併'},
@@ -112,64 +128,93 @@ const PLAN = [
   ]},
 ];
 
-const LS = 'qs-test-v1';
-let state = {};
-try { state = JSON.parse(localStorage.getItem(LS) || '{}'); } catch(e) { state = {}; }
+let state = {};                       // { id: {c, n, who, at} }
 let me = localStorage.getItem('qs-test-me') || '';
+let meName = (PLAN.find(p=>p.key===me)||{}).name || '';
+let editingId = null;                 // 正在打字的備註，刷新時不蓋它
+const noteTimers = {};
 
-function save(){ localStorage.setItem(LS, JSON.stringify(state)); }
-function st(id){ return state[id] || (state[id] = {c:false, n:''}); }
+function st(id){ return state[id] || (state[id] = {c:false, n:'', who:'', at:''}); }
+function nameOf(){ return meName || '訪客'; }
+function hhmm(iso){ return iso ? String(iso).slice(11,16) : ''; }
 
 function render(){
-  // 我是誰
   document.getElementById('who').innerHTML =
-    '<span style="font-size:13px;color:#7a848c;align-self:center;">我是：</span>' +
+    '<span style="font-size:13px;color:#7a848c;">我是：</span>' +
     PLAN.map(p => `<button class="${me===p.key?'active':''}" onclick="setMe('${p.key}')">${p.name}</button>`).join('') +
     `<button class="${me===''?'active':''}" onclick="setMe('')">全部顯示</button>`;
 
-  // 各區
   document.getElementById('plan').innerHTML = PLAN.map(p => {
     const show = (me==='' || me===p.key);
-    const done = p.items.filter((_,i)=>st(p.key+'-'+i).c).length;
     const rows = p.items.map((it,i)=>{
       const id = p.key+'-'+i; const s = st(id);
-      return `<div class="item ${s.c?'done':''}">
+      return `<div class="item ${s.c?'done':''}" data-item="${id}">
         <div class="row">
-          <input type="checkbox" class="cb" ${s.c?'checked':''} onchange="toggle('${id}',this.checked)">
+          <input type="checkbox" class="cb" data-cb="${id}" ${s.c?'checked':''} onchange="toggle('${id}',this.checked)">
           <div class="txt">
             <div class="t">${it.t}</div>
             <div class="e">預期：${it.e}</div>
+            <div class="by" data-by="${id}">${s.who?('✓ '+s.who+(s.at?' · '+hhmm(s.at):'')):''}</div>
           </div>
         </div>
-        <div class="note"><input type="text" placeholder="有問題寫這裡（沒問題免填）"
+        <div class="note"><input type="text" data-note="${id}" placeholder="有問題寫這裡（即時同步）"
           value="${(s.n||'').replace(/"/g,'&quot;')}" class="${s.n?'has':''}"
-          oninput="note('${id}',this.value,this)"></div>
+          onfocus="editingId='${id}'" onblur="editingId=null"
+          oninput="onNote('${id}',this.value,this)"></div>
       </div>`;
     }).join('');
     return `<div class="sec ${show?'':'hide'}" data-k="${p.key}">
       <div class="sec-h" onclick="jump('${p.key}')">
         <div><span class="nm">${p.name}</span><span class="ar">${p.area}</span></div>
-        <span class="pg" id="pg-${p.key}">${done} / ${p.items.length}</span>
+        <span class="pg" data-pg="${p.key}">0 / ${p.items.length}</span>
       </div>
       <div class="sec-b">${rows}</div>
     </div>`;
   }).join('');
-  updateTotals();
+  refreshDom();
 }
 
-function setMe(k){ me=k; localStorage.setItem('qs-test-me',k); render(); }
-function toggle(id,v){ st(id).c=v; save(); render(); }
-function note(id,v,el){ st(id).n=v; save(); el.className = v?'has':''; updateTotals(); }
-function jump(k){ if(me!==''&&me!==k){setMe(k);} }
-
-function updateTotals(){
-  let done=0,total=0;
-  PLAN.forEach(p=>{ p.items.forEach((_,i)=>{ total++; if(st(p.key+'-'+i).c)done++; });
-    const el=document.getElementById('pg-'+p.key);
-    if(el) el.textContent = p.items.filter((_,i)=>st(p.key+'-'+i).c).length+' / '+p.items.length;
+function refreshDom(){
+  PLAN.forEach(p=>{
+    p.items.forEach((_,i)=>{
+      const id=p.key+'-'+i; const s=st(id);
+      const cb=document.querySelector(`[data-cb="${id}"]`); if(cb) cb.checked=s.c;
+      const item=document.querySelector(`[data-item="${id}"]`); if(item) item.className='item'+(s.c?' done':'');
+      const ni=document.querySelector(`[data-note="${id}"]`);
+      if(ni && editingId!==id){ ni.value=s.n||''; ni.className=s.n?'has':''; }
+      const by=document.querySelector(`[data-by="${id}"]`);
+      if(by) by.innerHTML = s.who ? ('✓ '+s.who+(s.at?' · '+hhmm(s.at):'')) : '';
+    });
+    const done=p.items.filter((_,i)=>st(p.key+'-'+i).c).length;
+    const pg=document.querySelector(`[data-pg="${p.key}"]`); if(pg) pg.textContent=done+' / '+p.items.length;
   });
+  let done=0,total=0;
+  PLAN.forEach(p=>p.items.forEach((_,i)=>{ total++; if(st(p.key+'-'+i).c)done++; }));
   document.getElementById('gp').textContent = `整體進度 ${done} / ${total}`;
 }
+
+function setMe(k){ me=k; meName=(PLAN.find(p=>p.key===k)||{}).name||''; localStorage.setItem('qs-test-me',k); render(); }
+function jump(k){ if(me!==''&&me!==k) setMe(k); }
+
+async function push(id){
+  const s=st(id);
+  try{ await apiPost('saveTestResult', { item_id:id, checked:s.c, note:s.n, who:s.who }); sync('已同步 '+hhmm(new Date().toISOString())); }
+  catch(e){ sync('同步失敗，稍後自動重試'); }
+}
+function toggle(id,v){ const s=st(id); s.c=v; s.who=nameOf(); s.at=new Date().toISOString(); refreshDom(); push(id); }
+function onNote(id,v,el){
+  const s=st(id); s.n=v; s.who=nameOf(); s.at=new Date().toISOString(); el.className=v?'has':'';
+  clearTimeout(noteTimers[id]); noteTimers[id]=setTimeout(()=>push(id), 700);   // 打字停 0.7 秒才送
+}
+
+async function pull(){
+  try{
+    const data = await apiGet('getTestResults');
+    if(data){ Object.keys(data).forEach(id=>{ if(id!==editingId) state[id]=data[id]; }); refreshDom(); sync('已更新 '+hhmm(new Date().toISOString())); }
+  }catch(e){ sync('離線中…'); }
+}
+function refreshNow(){ pull(); }
+function sync(m){ document.getElementById('sync').textContent=m; }
 
 function report(keys){
   let out = '【清水段選屋系統 測試回報】\n';
@@ -195,6 +240,8 @@ function copyAll(){ doCopy(report(PLAN.map(p=>p.key))); }
 function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.className='toast show'; setTimeout(()=>t.className='toast',1800); }
 
 render();
+pull();
+setInterval(pull, 15000);   // 每 15 秒拉一次別人的更新
 </script>
 </body>
 </html>
