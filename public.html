@@ -320,18 +320,33 @@ body { background: var(--ct); }
   <div id="announcement-area"></div>
 
   <!-- 倒數計時橫幅 -->
+  <style>
+    @keyframes cdPulse { 0%,100%{box-shadow:0 0 0 0 rgba(214,47,36,.55);} 50%{box-shadow:0 0 0 12px rgba(214,47,36,0);} }
+    .cd-pulse { animation: cdPulse 1.4s ease-in-out infinite; }
+    .cd-seg { background:rgba(255,255,255,.16);border-radius:10px;padding:7px 12px;min-width:54px;text-align:center; }
+    .cd-seg .cd-num { font-size:30px;font-weight:700;color:#fff;line-height:1;font-variant-numeric:tabular-nums; }
+    .cd-seg .cd-lab { font-size:10px;color:rgba(255,255,255,.8);margin-top:4px; }
+  </style>
   <div id="countdown-banner" style="display:none;background:linear-gradient(135deg,var(--brand-dark),var(--brand));
-    border-radius:var(--rl);padding:16px 24px;margin-bottom:16px;
-    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-    <div>
-      <div style="font-size:12px;color:rgba(255,255,255,.75);margin-bottom:2px;letter-spacing:.04em;">選屋截止倒數</div>
-      <div style="font-size:32px;font-weight:600;color:#fff;line-height:1;" id="countdown-days">—</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">天</div>
+    border-radius:var(--rl);padding:18px 24px;margin-bottom:16px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;
+    box-shadow:0 4px 16px rgba(0,0,0,.12);transition:background .6s;">
+    <div style="flex:1;min-width:240px;">
+      <div id="countdown-tagline" style="font-size:13px;font-weight:600;color:#fff;letter-spacing:.04em;margin-bottom:10px;">
+        <i class="ti ti-alarm"></i> 選屋截止倒數
+      </div>
+      <div id="countdown-clock" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
     </div>
-    <div style="text-align:right;">
-      <div style="font-size:11px;color:rgba(255,255,255,.7);margin-bottom:4px;">截止日期</div>
-      <div style="font-size:15px;font-weight:500;color:#fff;" id="countdown-end-date">—</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.65);margin-top:6px;" id="countdown-detail"></div>
+    <div style="text-align:right;min-width:150px;">
+      <div style="font-size:11px;color:rgba(255,255,255,.75);">截止日期</div>
+      <div style="font-size:16px;font-weight:600;color:#fff;" id="countdown-end-date">—</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:4px;" id="countdown-detail"></div>
+      <div style="margin-top:8px;width:160px;max-width:42vw;margin-left:auto;">
+        <div style="height:6px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden;">
+          <div id="countdown-progress" style="height:6px;width:0%;background:#fff;border-radius:3px;transition:width .6s;"></div>
+        </div>
+        <div id="countdown-progress-label" style="font-size:9px;color:rgba(255,255,255,.7);margin-top:3px;text-align:right;"></div>
+      </div>
     </div>
   </div>
 
@@ -495,6 +510,75 @@ function deriveSelectionEnd(cfg) {
   return `${yr}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
 }
 
+// 選屋期間起始日（給進度條算「已過幾%」）
+function deriveSelectionStart(cfg) {
+  if (cfg.selection_start) return cfg.selection_start;
+  const stages = Array.isArray(cfg.stages) ? cfg.stages : [];
+  const stage = stages.find(s => String(s.name||'').includes('選屋'));
+  if (!stage || !stage.date) return '';
+  const startStr = String(stage.date).split(/[-~–—至]/).map(s => s.trim()).filter(Boolean)[0] || '';
+  const m = startStr.match(/^(\d{3,4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (!m) return '';
+  let yr = parseInt(m[1], 10);
+  if (yr < 1911) yr += 1911;
+  return `${yr}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
+}
+
+// 即時倒數（天/時/分/秒每秒跳動 + 顏色分級 + 文案升級 + 已過進度條）
+let _cdTimer = null;
+function startCountdown(endDate, startDate) {
+  const banner = document.getElementById('countdown-banner');
+  const end = new Date(endDate + 'T23:59:59').getTime();   // 截止日當天 23:59:59 為止
+  if (!banner || isNaN(end)) return;
+  const start = startDate ? new Date(startDate + 'T00:00:00').getTime() : null;
+  banner.style.display = 'flex';
+  document.getElementById('countdown-end-date').textContent =
+    new Date(end).toLocaleDateString('zh-TW', { year:'numeric', month:'long', day:'numeric' });
+
+  if (_cdTimer) clearInterval(_cdTimer);
+  const seg = (n, lab) => `<div class="cd-seg"><div class="cd-num">${String(n).padStart(2,'0')}</div><div class="cd-lab">${lab}</div></div>`;
+
+  const tick = () => {
+    const now = Date.now();
+    let diff = end - now;
+    const ended = diff <= 0;
+    if (ended) diff = 0;
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor(diff % 86400000 / 3600000);
+    const mi = Math.floor(diff % 3600000 / 60000);
+    const s = Math.floor(diff % 60000 / 1000);
+
+    const clk = document.getElementById('countdown-clock');
+    if (clk) clk.innerHTML = ended
+      ? '<div style="font-size:24px;font-weight:700;color:#fff;">選屋期間已截止</div>'
+      : seg(d,'天') + seg(h,'時') + seg(mi,'分') + seg(s,'秒');
+
+    // 顏色 / 文案 / 脈動 分級
+    let bg, tag, pulse = false;
+    if (ended)      { bg = 'linear-gradient(135deg,#5a6b73,#475560)'; tag = '<i class="ti ti-flag"></i> 選屋期間已截止'; }
+    else if (d > 14){ bg = 'linear-gradient(135deg,var(--brand-dark),var(--brand))'; tag = '<i class="ti ti-alarm"></i> 選屋截止倒數'; }
+    else if (d > 7) { bg = 'linear-gradient(135deg,#b9791f,#d99a32)'; tag = '<i class="ti ti-alarm"></i> 選屋期間倒數，請及早完成選屋'; }
+    else if (d > 3) { bg = 'linear-gradient(135deg,#b23b2e,#d6533f)'; tag = '<i class="ti ti-alert-triangle"></i> 把握時間，盡快完成選屋'; }
+    else            { bg = 'linear-gradient(135deg,#a62019,#d12f24)'; tag = `<i class="ti ti-alert-triangle"></i> 僅剩最後 ${d === 0 ? '不到一天' : d + ' 天'}，請盡速完成選屋！`; pulse = true; }
+    banner.style.background = bg;
+    banner.classList.toggle('cd-pulse', pulse);
+    const tl = document.getElementById('countdown-tagline'); if (tl) tl.innerHTML = tag;
+    const det = document.getElementById('countdown-detail');
+    if (det) det.textContent = ended ? '' : `截止前還有 ${d} 天 ${h} 小時`;
+    const cb = document.getElementById('countdown-badge');
+    if (cb) cb.innerHTML = ended ? '<i class="ti ti-calendar"></i> 選屋已截止' : `<i class="ti ti-calendar"></i> 截止倒數 ${d} 天`;
+
+    // 進度條：選屋期間已過 %
+    if (start && end > start) {
+      const pct = Math.min(100, Math.max(0, Math.round((now - start) / (end - start) * 100)));
+      const pbar = document.getElementById('countdown-progress'); if (pbar) pbar.style.width = pct + '%';
+      const plab = document.getElementById('countdown-progress-label'); if (plab) plab.textContent = `選屋期間已過 ${pct}%`;
+    }
+  };
+  tick();
+  _cdTimer = setInterval(tick, 1000);
+}
+
 async function loadConfig() {
   const cfg = await apiGet('getCase');
   if (!cfg) return;
@@ -504,32 +588,23 @@ async function loadConfig() {
   // Countdown（沒填 selection_end 就自動用「選屋期間」階段結束日）
   const endDate = deriveSelectionEnd(cfg);
   if (endDate) {
-    const end   = new Date(endDate);
-    const now   = new Date();
-    const days  = Math.max(0, Math.ceil((end - now) / 86400000));
-    document.getElementById('countdown-badge').innerHTML = `<i class="ti ti-calendar"></i> 截止倒數 ${days} 天`;
-    document.getElementById('status-badge').innerHTML = `<i class="ti ti-pencil"></i> 選屋進行中`;
-    document.getElementById('status-badge').style.background = 'rgba(255,255,255,.22)';
-    document.getElementById('status-badge').style.color = '#fff';
-    // 倒數橫幅
-    const banner = document.getElementById('countdown-banner');
-    if (banner) {
-      banner.style.display = 'flex';
-      document.getElementById('countdown-days').textContent = days;
-      document.getElementById('countdown-end-date').textContent = end.toLocaleDateString('zh-TW', {year:'numeric',month:'long',day:'numeric'});
-      // 精確到時分
-      const hours = Math.max(0, Math.floor((end - new Date()) / 3600000));
-      const hLeft = hours % 24;
-      document.getElementById('countdown-detail').textContent = days > 0 ? `還剩約 ${hLeft} 小時` : '今天截止';
-    }
+    const sb = document.getElementById('status-badge');
+    if (sb) { sb.innerHTML = '<i class="ti ti-pencil"></i> 選屋進行中'; sb.style.background = 'rgba(255,255,255,.22)'; sb.style.color = '#fff'; }
+    startCountdown(endDate, deriveSelectionStart(cfg));
   } else {
     // #28 未設定截止日 → 顯示「籌備中」，不要整塊消失
+    if (_cdTimer) { clearInterval(_cdTimer); _cdTimer = null; }
     const banner = document.getElementById('countdown-banner');
     if (banner) {
       banner.style.display = 'flex';
-      document.getElementById('countdown-days').textContent = '—';
+      banner.classList.remove('cd-pulse');
+      banner.style.background = 'linear-gradient(135deg,var(--brand-dark),var(--brand))';
+      const tl = document.getElementById('countdown-tagline'); if (tl) tl.innerHTML = '<i class="ti ti-clock"></i> 選屋截止倒數';
+      const clk = document.getElementById('countdown-clock'); if (clk) clk.innerHTML = '<div style="font-size:22px;font-weight:700;color:#fff;">選屋期間籌備中</div>';
       document.getElementById('countdown-end-date').textContent = '日期近期公布';
-      document.getElementById('countdown-detail').textContent = '選屋期間籌備中';
+      document.getElementById('countdown-detail').textContent = '';
+      const pb = document.getElementById('countdown-progress'); if (pb) pb.style.width = '0%';
+      const pl = document.getElementById('countdown-progress-label'); if (pl) pl.textContent = '';
     }
     const sb = document.getElementById('status-badge');
     if (sb) sb.innerHTML = '<i class="ti ti-clock"></i> 選屋籌備中';
