@@ -1555,7 +1555,7 @@ function openOwnerModal(ownerId) {
     </div>
     <div class="mb-12">
       <div class="field-label">身分證字號（僅儲存雜湊，不保留明碼）</div>
-      <input type="text" id="o-id" placeholder="${owner ? '•••••••••• （留空不變更）' : 'A123456789'}" maxlength="10">
+      <input type="text" id="o-id" value="${owner?.id_plain||''}" placeholder="${owner ? '留空不變更' : 'A123456789'}" maxlength="10">
     </div>
     <div class="grid-2 mb-12">
       <div>
