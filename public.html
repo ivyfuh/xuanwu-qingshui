@@ -475,15 +475,36 @@ async function apiGet(action, params={}, retries=2) {
   }
 }
 
+// 倒數結束日：優先用 _config.selection_end；沒填就抓「選屋期間」階段的結束日（支援西元/民國、日期範圍）
+function deriveSelectionEnd(cfg) {
+  if (cfg.selection_end) return cfg.selection_end;
+  const stages = Array.isArray(cfg.stages) ? cfg.stages : [];
+  const stage = stages.find(s => String(s.name||'').includes('選屋'));
+  if (!stage || !stage.date) return '';
+  const parts = String(stage.date).split(/[-~–—至]/).map(s => s.trim()).filter(Boolean);
+  let endStr = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+  // 結束端若省略年份（如 07/31）→ 補開始端的年份
+  if (parts.length > 1 && !/\d{3,4}[\/\-]/.test(endStr)) {
+    const y = parts[0].match(/^(\d{3,4})[\/\-]/);
+    if (y) endStr = y[1] + '/' + endStr;
+  }
+  const m = endStr.match(/^(\d{3,4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (!m) return '';
+  let yr = parseInt(m[1], 10);
+  if (yr < 1911) yr += 1911;   // 民國 → 西元
+  return `${yr}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
+}
+
 async function loadConfig() {
   const cfg = await apiGet('getCase');
   if (!cfg) return;
   STATE.cfg = cfg;
   const isTest = cfg.env === 'test';
   document.getElementById('test-banner').style.display = isTest ? '' : 'none';
-  // Countdown
-  if (cfg.selection_end) {
-    const end   = new Date(cfg.selection_end);
+  // Countdown（沒填 selection_end 就自動用「選屋期間」階段結束日）
+  const endDate = deriveSelectionEnd(cfg);
+  if (endDate) {
+    const end   = new Date(endDate);
     const now   = new Date();
     const days  = Math.max(0, Math.ceil((end - now) / 86400000));
     document.getElementById('countdown-badge').innerHTML = `<i class="ti ti-calendar"></i> 截止倒數 ${days} 天`;
