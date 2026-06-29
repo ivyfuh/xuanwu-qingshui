@@ -2365,7 +2365,7 @@ async function printApplication(ownerId) {
     <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;">
       <span>所有權人：</span><span>（簽名及蓋章）</span>
     </div>
-    <div style="margin:10px 0;">身分證字號(統一編號)：</div>
+    <div style="margin:10px 0;">身分證字號(統一編號)：${owner.id_plain||''}</div>
     <div style="margin:10px 0;">聯絡地址(營業所在地)：${owner.address||''}</div>
     <div style="margin:10px 0;">聯絡電話：${owner.phone||''}</div>
     <div style="display:flex;justify-content:space-between;margin-top:18px;letter-spacing:2px;">
