@@ -2405,10 +2405,14 @@ function renderMergeCandidates() {
   if (!el) return;
   el.innerHTML = candidates.map(u => {
     const checked = MERGE_STATE.selectedMembers.includes(u.owner_id);
-    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:6px;${checked?'background:var(--brand-bg);':''}">
-      <input type="checkbox" value="${u.owner_id}" ${checked?'checked':''}
+    // 不參與權變者不可加入合併（需先改回參與）；已在組內的成員不受影響
+    const o = STATE.owners.find(x => x.owner_id == u.owner_id);
+    const np = o && (o.participate==='false' || o.participate===false || o.participate==='post');
+    const blocked = np && !checked;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;${blocked?'opacity:.5;cursor:not-allowed;':'cursor:pointer;'}${checked?'background:var(--brand-bg);':''}">
+      <input type="checkbox" value="${u.owner_id}" ${checked?'checked':''} ${blocked?'disabled':''}
         onchange="toggleMergeMember('${u.owner_id}')" style="width:auto;">
-      <span style="flex:1;">${u.serial_no||''} ${u.name}</span>
+      <span style="flex:1;">${u.serial_no||''} ${u.name}${blocked?' <span class="text-xs" style="color:var(--orange-text);">(不參與，需先改為參與)</span>':''}</span>
       <span class="text-xs text-muted">剩餘 NT$${fmt(u.remaining)}</span>
     </label>`;
   }).join('') || '<div class="text-xs text-muted" style="padding:10px;">無符合的地主</div>';
@@ -2436,6 +2440,13 @@ function toggleMergeMember(ownerId) {
     delete MERGE_STATE.invest[ownerId];
     if (MERGE_STATE.frac) delete MERGE_STATE.frac[ownerId];
   } else {
+    // 不參與權變者不可加入合併（需先改回參與）
+    const o = STATE.owners.find(x => x.owner_id == ownerId);
+    if (o && (o.participate==='false' || o.participate===false || o.participate==='post')) {
+      alert(`${o.name||ownerId} 目前是「不參與權變」，需先在選屋/地主編輯改回參與，才能加入合併組。`);
+      renderMergeCandidates();
+      return;
+    }
     MERGE_STATE.selectedMembers.push(ownerId);
   }
   MERGE_STATE.manualFrac = false;   // 成員變動 → 重新按剩餘值預設分攤
