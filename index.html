@@ -2749,11 +2749,11 @@ function recalcMerge(skipAmountRender) {
   }
 
   // 各人「分子 / 分母」↔「金額」雙向：改分數算金額、改金額反推分數
-  const _gridCols = '1fr 70px 16px 70px 130px';
+  const _gridCols = '1fr 92px 10px 92px 118px';
   if (!skipAmountRender) {
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
-      rowsEl.innerHTML = `<div style="display:grid;grid-template-columns:${_gridCols};gap:6px;font-size:11px;color:var(--tt);margin-bottom:4px;">
+      rowsEl.innerHTML = `<div style="display:grid;grid-template-columns:${_gridCols};gap:5px;font-size:11px;color:var(--tt);margin-bottom:4px;">
           <div>組員</div><div style="text-align:center;">分子</div><div></div><div style="text-align:center;">分母</div><div style="text-align:right;">金額(可改)</div>
         </div>` + members.map(oid => {
         const u = MERGE_STATE.usage[oid] || {};
@@ -2761,13 +2761,13 @@ function recalcMerge(skipAmountRender) {
         const amt = MERGE_STATE.invest[oid] || 0;
         const _rem = mergeRemainOf(oid);
         const overRemain = amt > _rem + 1;
-        return `<div style="display:grid;grid-template-columns:${_gridCols};gap:6px;align-items:center;margin-bottom:6px;">
+        return `<div style="display:grid;grid-template-columns:${_gridCols};gap:5px;align-items:center;margin-bottom:6px;">
           <span style="font-size:12px;">${u.name||oid}
             <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(_rem)}）</span></span>
-          <input type="number" min="0" class="merge-num" value="${f.num}" oninput="setMergeFracPart('${oid}','num',this.value)" placeholder="分子" style="text-align:center;font-size:15px;padding:7px 4px;height:34px;">
+          <input type="text" inputmode="numeric" class="merge-num" value="${f.num}" oninput="setMergeFracPart('${oid}','num',this.value)" placeholder="分子" style="text-align:center;font-size:13px;padding:7px 2px;height:34px;">
           <span style="text-align:center;color:var(--tt);font-size:15px;">/</span>
-          <input type="number" min="1" class="merge-den" value="${f.den}" oninput="setMergeFracPart('${oid}','den',this.value)" placeholder="分母" style="text-align:center;font-size:15px;padding:7px 4px;height:34px;">
-          <input type="number" min="0" step="1000" class="merge-amt" value="${amt}" oninput="setMergeAmount('${oid}',this.value)" title="可直接輸入金額，分數會自動反推" style="text-align:right;font-size:14px;padding:7px 6px;height:34px;font-weight:500;color:${overRemain?'var(--red-text)':'var(--tp)'};">
+          <input type="text" inputmode="numeric" class="merge-den" value="${f.den}" oninput="setMergeFracPart('${oid}','den',this.value)" placeholder="分母" style="text-align:center;font-size:13px;padding:7px 2px;height:34px;">
+          <input type="text" inputmode="numeric" class="merge-amt" value="${amt}" oninput="setMergeAmount('${oid}',this.value)" title="可直接輸入金額，分數會自動反推" style="text-align:right;font-size:13px;padding:7px 5px;height:34px;font-weight:500;color:${overRemain?'var(--red-text)':'var(--tp)'};">
         </div>`;
       }).join('');
     }
@@ -2801,6 +2801,8 @@ function recalcMerge(skipAmountRender) {
   const remainSum   = members.reduce((s,oid) => s + mergeRemainOf(oid), 0);
   const combinedLimit = remainSum;   // 合併可用上限 = 各人剩餘額度加總（編輯時含本組原投入）
   const overLimit = total > combinedLimit && total > 0;
+  const investSum = members.reduce((s,oid) => s + (MERGE_STATE.invest[oid]||0), 0);   // 已分配金額加總
+  const investDiff = total - investSum;   // 與選配總價的差額（正=還沒分完、負=分超過）
   const hasMembers = members.length >= 2;
   const hasSelection = (units.length + parks.length) > 0;
 
@@ -2827,10 +2829,9 @@ function recalcMerge(skipAmountRender) {
   if (!hasMembers) problems.push('合併組至少需要 2 人');
   if (!hasSelection) problems.push('請輸入選配戶別或車位');
   if (overLimit) problems.push(`選配總價 NT$${fmt(total)} 超過合併可用上限 NT$${fmt(combinedLimit)}（各人剩餘額度加總，已含110%），不能選`);
-  // 分數加總必須剛好 = 1（100%）
-  if (hasMembers) {
-    const fs = MERGE_STATE.fracSum || 0;
-    if (Math.abs(fs - 1) > 0.005) problems.push(`各人分數加總為 ${(fs*100).toFixed(1)}%，需湊到剛好 100%（加總=1）才能送出`);
+  // 各人金額加總必須＝選配總價（等同分數加總=1，但用金額講比較直覺）
+  if (hasMembers && total > 0 && Math.abs(investDiff) > members.length) {
+    problems.push(`各人金額加總 NT$${fmt(investSum)} 與選配總價 NT$${fmt(total)} ${investDiff>0?'還差 NT$'+fmt(investDiff):'超出 NT$'+fmt(-investDiff)}，需分配到剛好相等才能送出`);
   }
 
   const canSubmit = problems.length === 0;
@@ -2840,6 +2841,8 @@ function recalcMerge(skipAmountRender) {
       <div class="flex justify-between mb-2"><span class="text-muted">選配總價</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
       <div class="flex justify-between mb-2"><span class="text-muted">合併可用上限（各人剩餘額度加總，已含110%）</span>
         <span style="font-weight:500;color:${overLimit?'var(--red-text)':'var(--tp)'};">NT$${fmt(combinedLimit)}</span></div>
+      <div class="flex justify-between mb-2"><span class="text-muted">已分配金額（各人加總）</span>
+        <span style="font-weight:500;color:${Math.abs(investDiff)>members.length?'var(--red-text)':'var(--green-text)'};">NT$${fmt(investSum)}${Math.abs(investDiff)>members.length?`（${investDiff>0?'還差 NT$'+fmt(investDiff):'超出 NT$'+fmt(-investDiff)}）`:'（已分配完）'}</span></div>
       ${total>0&&members.length>0?`<div style="border-top:0.5px solid var(--bt);margin-top:6px;padding-top:6px;">
         <div class="text-muted mb-4">各人出資與找補：</div>${splitRows}</div>`:''}
     </div>
@@ -2878,9 +2881,11 @@ async function submitMerge() {
   const combinedLimit2 = members.reduce((s,m) => s + mergeRemainOf(m.owner_id), 0);
   if (members.length < 2) { alert('合併組至少需要 2 人'); return; }
   if (!units.length && !parks.length) { alert('請輸入選配戶別或車位'); return; }
-  const fracSum = MERGE_STATE.fracSum || 0;
-  if (Math.abs(fracSum - 1) > 0.005) { alert(`各人分數加總為 ${(fracSum*100).toFixed(1)}%，需湊到剛好 100%（加總=1）才能送出`); return; }
   const mergeTotal = MERGE_STATE.mergeTotal || 0;
+  const investSum = ownerIds.reduce((s, oid) => s + (MERGE_STATE.invest[oid] || 0), 0);
+  if (Math.abs(mergeTotal - investSum) > ownerIds.length) {
+    alert(`各人金額加總 NT$${fmt(investSum)} 與選配總價 NT$${fmt(mergeTotal)} 不相等（差 NT$${fmt(Math.abs(mergeTotal-investSum))}），需分配到剛好相等才能送出`); return;
+  }
   if (mergeTotal > combinedLimit2) { alert(`選配總價 NT$${fmt(mergeTotal)} 超過合併可用上限 NT$${fmt(combinedLimit2)}（已含110%），不能送出`); return; }
 
   MERGE_STATE.submitting = true;
