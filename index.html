@@ -636,7 +636,7 @@ function renderOwnerList() {
     const sel = selOf(o.owner_id);
     const nonpart = (o.participate==='false'||o.participate===false||o.participate==='post');
     const prog = progOf(o.owner_id);
-    if (f === 'selected'    && (!sel || sel.status==='draft' || nonpart)) return false;
+    if (f === 'selected'    && (!sel || sel.status!=='confirmed' || nonpart)) return false;  // 已完成=正式登錄(confirmed)，與上方統計一致
     if (f === 'unselected'  && (sel && !nonpart ? sel.status!=='draft' : false) ) { /* keep drafts/none */ }
     if (f === 'unselected'  && (nonpart || (sel && sel.status==='confirmed'))) return false;
     if (f === 'incomplete') {
