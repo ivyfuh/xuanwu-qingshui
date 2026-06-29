@@ -984,6 +984,13 @@ function renderOwnerDetail(ownerId) {
     `}
 
     ${renderDocChecklist(ownerId)}
+
+    <div style="margin-top:12px;border-top:0.5px solid var(--bt);padding-top:10px;">
+      <button class="btn-secondary" style="width:100%;font-size:12px;" onclick="loadOwnerHistory('${ownerId}')">
+        <i class="ti ti-history"></i> 查看異動歷程（選配／改選記錄）
+      </button>
+      <div id="owner-history" style="margin-top:8px;"></div>
+    </div>
   `;
 }
 
@@ -1279,6 +1286,35 @@ async function restoreParticipate(ownerId) {
     renderOwnerDetail(ownerId);
     alert('已改為參與選配，現在可以選屋／加入合併組了。');
   } catch(e) { alert('失敗：' + e.message); }
+}
+
+// 異動歷程（讀 audit_log）
+const HIST_LABEL = {
+  CREATE_DRAFT:'建立選配（草稿）', CREATE_CONFIRMED:'建立選配（正式）',
+  RESELECT_DRAFT:'改選（草稿）', RESELECT_CONFIRMED:'改選（正式）',
+  LOTTERY_LOST:'抽籤落選（需改選）', LOTTERY_WON:'抽籤得獎',
+  CREATE:'建檔', UPDATE:'資料更新',
+  CONSENT_SUBMITTED:'同意書已收', CONSENT_REVOKED:'同意書撤回',
+  PHYSICAL_RECEIVED:'文件實體收到', PHYSICAL_RECEIVED_NEW:'文件實體收到',
+  PHYSICAL_UNRECEIVED:'文件取消收到', DOC_NOTE:'文件備註', DOC_NOTE_NEW:'文件備註', UPLOAD:'文件上傳',
+};
+async function loadOwnerHistory(ownerId) {
+  const box = document.getElementById('owner-history');
+  if (!box) return;
+  box.innerHTML = '<div class="text-xs text-muted" style="padding:6px;">載入中…</div>';
+  try {
+    const list = await apiGet('getOwnerHistory', { owner_id: ownerId });
+    if (!list || !list.length) { box.innerHTML = '<div class="text-xs text-muted" style="padding:6px;">尚無異動記錄</div>'; return; }
+    box.innerHTML = list.map(h => {
+      const t = String(h.changed_at||'').slice(0,16).replace('T',' ');
+      const label = HIST_LABEL[h.action] || h.action || '異動';
+      return `<div style="font-size:11px;padding:5px 8px;border-bottom:0.5px solid var(--bt);">
+        <div><span style="font-weight:500;">${label}</span> <span class="text-muted">${t}</span></div>
+        ${h.reason ? `<div class="text-muted">原因：${h.reason}</div>` : ''}
+        ${h.changed_by ? `<div class="text-muted" style="font-size:10px;">${h.changed_by}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) { box.innerHTML = `<div class="text-xs" style="color:var(--red-text);padding:6px;">載入失敗：${e.message}</div>`; }
 }
 
 function previewSelection(ownerId) {
