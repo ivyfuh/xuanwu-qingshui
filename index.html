@@ -2117,7 +2117,9 @@ async function printApplication(ownerId) {
   // 合併選配（該地主所屬合併組分到的戶別/車位，去重後併入）
   const mergeUnits = [], mergeParks = [];
   (MERGE_STATE.groups || []).forEach(g => {
-    if (!(g.members||[]).some(m => m.owner_id === ownerId)) return;
+    // 後端合併組回傳的是 owner_ids（非 members）；比對時統一轉字串
+    const ids = (g.owner_ids || g.members || []).map(m => String(m && m.owner_id != null ? m.owner_id : m));
+    if (!ids.includes(String(ownerId))) return;
     const gUnits = Array.isArray(g.unit_nos) ? g.unit_nos : JSON.parse(g.unit_nos||'[]');
     const gParks = Array.isArray(g.parking_nos) ? g.parking_nos : JSON.parse(g.parking_nos||'[]');
     gUnits.forEach(u => { if (!personalUnits.includes(u) && !mergeUnits.includes(u)) mergeUnits.push(u); });
@@ -2421,6 +2423,23 @@ function mergeFrac(amt, total) {
   return d <= 30 ? `${n}/${d}` : `${fmt(amt)}/${fmt(total)}`;
 }
 
+// 由「分數」反推金額：輸入「分子/分母」或小數，視為佔出資加總的比例，回推此人金額
+function setMergeFraction(ownerId, val) {
+  let ratio = null;
+  const m = String(val).match(/^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/);
+  if (m) { const den = Number(m[2]); ratio = den ? Number(m[1]) / den : null; }
+  else if (/^\s*0?\.\d+\s*$/.test(val)) { ratio = Number(val); }
+  if (ratio == null) return;   // 還沒打完整（如只打「1/」）先不動
+  const others = MERGE_STATE.selectedMembers
+    .filter(o => o !== ownerId)
+    .reduce((s, o) => s + (MERGE_STATE.invest[o] || 0), 0);
+  if (ratio >= 1)      MERGE_STATE.invest[ownerId] = others > 0 ? others * 99 : 0;
+  else if (ratio <= 0) MERGE_STATE.invest[ownerId] = 0;
+  else                 MERGE_STATE.invest[ownerId] = Math.round(others * ratio / (1 - ratio));
+  MERGE_STATE.manualInvest = true;
+  recalcMerge(true);   // 不重畫輸入框，避免游標跳走
+}
+
 function setMergeAmount(ownerId, val) {
   MERGE_STATE.invest[ownerId] = Math.max(0, Math.round(Number(val)||0));
   MERGE_STATE.manualInvest = true;  // 承辦手動改過，停止自動分攤
@@ -2513,7 +2532,7 @@ function recalcMerge(skipAmountRender) {
             <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(u.remaining||0)}）</span></span>
           <input type="number" value="${amt}" oninput="setMergeAmount('${oid}', this.value)"
             style="font-size:12px;padding:4px 8px;${overRemain?'border-color:var(--red);':''}" placeholder="金額">
-          <span class="merge-frac" title="出資佔合併組總額的分數" style="text-align:right;font-size:12px;color:var(--tp);font-weight:500;">${mergeFrac(amt, investTotal)}</span>
+          <input type="text" class="merge-frac" title="出資佔合併組總額的分數，可直接填如 1/3" value="${mergeFrac(amt, investTotal)}" oninput="setMergeFraction('${oid}', this.value)" placeholder="如 1/3" style="text-align:center;font-size:12px;padding:4px 4px;color:var(--tp);font-weight:500;">
         </div>`;
       }).join('');
     }
@@ -2527,7 +2546,7 @@ function recalcMerge(skipAmountRender) {
         // 不更新使用者正在編輯的框，避免游標跳走
         if (inputs && inputs[0] && inputs[0] !== active) inputs[0].value = amt;
         const frac = rowsEl.children[i]?.querySelector('.merge-frac');
-        if (frac) frac.textContent = mergeFrac(amt, investTotal);
+        if (frac && frac !== active) frac.value = mergeFrac(amt, investTotal);
       });
     }
   }
@@ -2600,9 +2619,12 @@ async function submitMerge() {
   if (MERGE_STATE.submitting) return;  // 防重複送單
   const units = expandCodeList(document.getElementById('merge-units').value);
   const parks = expandCodeList(document.getElementById('merge-parks').value);
-  const members = MERGE_STATE.selectedMembers.map(oid => ({
-    owner_id: oid, invested: MERGE_STATE.invest[oid]||0,
-  }));
+  const ownerIds = [...MERGE_STATE.selectedMembers];
+  const invests = {};
+  ownerIds.forEach(oid => { invests[oid] = MERGE_STATE.invest[oid] || 0; });
+  const combinedRights = ownerIds.reduce((s, oid) => s + (MERGE_STATE.invest[oid] || 0), 0);
+  const combinedLimit  = ownerIds.reduce((s, oid) => s + Math.round((MERGE_STATE.usage[oid]?.remaining || 0) * 1.1), 0);
+  const members = ownerIds.map(oid => ({ owner_id: oid, invested: MERGE_STATE.invest[oid] || 0 }));
 
   // 前端硬擋（與後端一致）
   const remainSum2 = members.reduce((s,m) => s + (MERGE_STATE.usage[m.owner_id]?.remaining||0), 0);
@@ -2622,7 +2644,11 @@ async function submitMerge() {
   try {
     await apiPost('saveMergeGroup', {
       group_id: MERGE_STATE.editing || undefined,
-      members, unit_nos: units, parking_nos: parks,
+      owner_ids: ownerIds,
+      invests,
+      unit_nos: units, parking_nos: parks,
+      combined_rights: combinedRights,
+      combined_limit: combinedLimit,
     });
     MERGE_STATE.submitting = false;
     closeModal();
