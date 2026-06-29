@@ -144,6 +144,7 @@ tr.selected td{background:#EDF5FB;}
       <div class="nav-item active" id="nav-list" onclick="navTo('list')"><i class="ti ti-clipboard-list"></i>地主清單</div>
       <div class="nav-item" id="nav-merge" onclick="navTo('merge')"><i class="ti ti-users"></i>合併管理</div>
       <div class="nav-item" id="nav-lottery" onclick="navTo('lottery')"><i class="ti ti-chart-pie"></i>選屋總覽</div>
+      <div class="nav-item" id="nav-draw" onclick="navTo('draw')"><i class="ti ti-alert-triangle"></i>重複檢討</div>
       <div class="nav-item" id="nav-calls" onclick="navTo('calls')"><i class="ti ti-phone"></i>電話記錄</div>
       <div class="nav-item" id="nav-contacts" onclick="navTo('contacts')"><i class="ti ti-address-book"></i>通訊錄</div>
       <div class="nav-item" id="nav-announce" onclick="navTo('announce')"><i class="ti ti-speakerphone"></i>公告管理</div>
@@ -266,7 +267,7 @@ tr.selected td{background:#EDF5FB;}
       <!-- ===== DRAW VIEW ===== -->
       <div id="view-draw" style="display:none;">
         <div class="flex items-center justify-between mb-16">
-          <h2 style="font-size:16px;font-weight:500;"><i class="ti ti-dice"></i> 抽籤管理</h2>
+          <h2 style="font-size:16px;font-weight:500;"><i class="ti ti-alert-triangle"></i> 重複戶別檢討</h2>
           <button class="btn-secondary" onclick="refreshLottery()"><i class="ti ti-refresh"></i> 重新整理</button>
         </div>
         <div id="lottery-content">
@@ -3519,49 +3520,30 @@ async function loadLotteryList() {
       return { oid, name: o?.name || ('未知地主(' + oid + ')'), status: st };
     });
 
-    const hasWinner = owners.some(o => o.status === 'confirmed' &&
-      STATE.selections.find(s => s.owner_id == o.oid)?.status === 'confirmed');
-
     return `<div class="card mb-12" style="border-left:3px solid var(--red);">
       <div class="flex items-center justify-between mb-8">
         <div>
           <span style="font-size:13px;font-weight:500;">${label} ${code}</span>
           <span style="font-size:11px;color:var(--red-text);background:var(--red-bg);padding:1px 6px;border-radius:6px;margin-left:6px;">${owners.length}人重複</span>
         </div>
-        ${hasWinner ? `<span style="font-size:11px;color:var(--green-text);background:var(--green-bg);padding:2px 8px;border-radius:6px;">已抽籤</span>` : ''}
       </div>
-      <div style="margin-bottom:10px;">
-        ${owners.map(o => `<div class="flex items-center gap-8" style="padding:4px 0;border-bottom:0.5px solid var(--bt);font-size:12px;">
-          <span>${o.name}</span>
-          <span style="font-size:10px;color:var(--tt);">${o.oid}</span>
-          ${o.status === 'needs_reselect'
-            ? `<span style="margin-left:auto;font-size:10px;color:var(--orange-text);background:var(--orange-bg);padding:1px 6px;border-radius:4px;">落選需改選</span>`
-            : o.status === 'confirmed'
-              ? `<span style="margin-left:auto;font-size:10px;color:var(--green-text);background:var(--green-bg);padding:1px 6px;border-radius:4px;">得獎</span>`
-              : `<span style="margin-left:auto;font-size:10px;color:var(--tt);">草稿</span>`}
-        </div>`).join('')}
+      <div style="margin-bottom:8px;">
+        ${owners.map(o => {
+          const stx = o.status==='confirmed'?'正式':o.status==='needs_reselect'?'需改選':o.status==='draft'?'草稿':'';
+          return `<div class="flex items-center gap-8" style="padding:4px 0;border-bottom:0.5px solid var(--bt);font-size:12px;">
+            <span>${o.name}</span>
+            <span style="font-size:10px;color:var(--tt);">${o.oid}</span>
+            ${stx?`<span style="margin-left:auto;font-size:10px;color:var(--tt);">${stx}</span>`:''}
+          </div>`;
+        }).join('')}
       </div>
-      ${!hasWinner ? `
-      <div style="font-size:11px;color:var(--tt);margin-bottom:6px;">
-        <i class="ti ti-info-circle"></i> 抽籤方式：選出「得獎者」即可，<b>其餘人會自動標記為「落選需改選」</b>（不需另外設定落選者）。
-      </div>
-      <div class="flex gap-8 items-center">
-        <select id="winner-${type}-${code}" style="flex:1;padding:6px 8px;border:0.5px solid var(--bs);border-radius:var(--rm);background:var(--cp);">
-          <option value="">選擇得獎者（其餘自動落選）…</option>
-          ${owners.map(o => `<option value="${o.oid}">${o.name}</option>`).join('')}
-        </select>
-        <input type="date" id="ldate-${type}-${code}" style="width:130px;padding:6px 8px;border:0.5px solid var(--bs);border-radius:var(--rm);">
-        <button class="btn-primary" style="white-space:nowrap;"
-          onclick="submitLottery('${code}','${type}',${JSON.stringify(ownerIds)})">
-          <i class="ti ti-check"></i> 登錄抽籤結果
-        </button>
-      </div>` : ''}
+      <div style="font-size:11px;color:var(--tt);"><i class="ti ti-info-circle"></i> 此 ${label} 有 ${owners.length} 人重複選配，請另行協調或公開抽籤決定後，再到各地主「改選」調整。</div>
     </div>`;
   }).join('');
 
   el.innerHTML = `
     ${personTable}
-    <div style="font-size:12px;font-weight:600;color:var(--ts);margin:16px 0 8px;"><i class="ti ti-list-details"></i> 重複明細（以戶／車位為單位，抽籤登錄）</div>
+    <div style="font-size:12px;font-weight:600;color:var(--ts);margin:16px 0 8px;"><i class="ti ti-list-details"></i> 重複明細（以戶／車位為單位）</div>
     ${dupUnits.length ? `<div style="font-size:12px;font-weight:500;color:var(--ts);margin-bottom:8px;">戶別重複（${dupUnits.length} 組）</div>
     ${renderGroup('戶別', dupUnits, 'unit')}` : ''}
     ${dupParks.length ? `<div style="font-size:12px;font-weight:500;color:var(--ts);margin-bottom:8px;margin-top:16px;">車位重複（${dupParks.length} 組）</div>
