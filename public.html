@@ -469,6 +469,11 @@ async function reloadPublic() {
     renderGrid();
     renderStats();
     document.getElementById('update-time').textContent = '更新：' + new Date().toLocaleString('zh-TW');
+    // 清除已輸入的查詢資料 + 查詢結果，回到起始頁面
+    const vn = document.getElementById('v-name'); if (vn) vn.value = '';
+    const vi = document.getElementById('v-id');   if (vi) vi.value = '';
+    const vr = document.getElementById('verify-result'); if (vr) vr.innerHTML = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (e) {
     location.reload();   // 萬一原地更新失敗，退回整頁重載
     return;
@@ -688,7 +693,7 @@ async function loadAnnouncements() {
         <span style="font-size:13px;font-weight:500;color:var(--tp);">${a.title||''}</span>
         ${a.date?`<span style="margin-left:auto;font-size:11px;color:var(--tt);">${a.date}</span>`:''}
       </div>
-      ${a.content?`<div class="text-sm" style="color:var(--ts);line-height:1.6;padding-left:2px;">${a.content}</div>`:''}
+      ${a.content?`<div class="text-sm" style="color:var(--ts);line-height:1.6;padding-left:2px;white-space:pre-wrap;">${a.content}</div>`:''}
     </div>`;
   }).join('');
 

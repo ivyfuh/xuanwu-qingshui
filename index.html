@@ -144,7 +144,6 @@ tr.selected td{background:#EDF5FB;}
       <div class="nav-item active" id="nav-list" onclick="navTo('list')"><i class="ti ti-clipboard-list"></i>地主清單</div>
       <div class="nav-item" id="nav-merge" onclick="navTo('merge')"><i class="ti ti-users"></i>合併管理</div>
       <div class="nav-item" id="nav-lottery" onclick="navTo('lottery')"><i class="ti ti-chart-pie"></i>選屋總覽</div>
-      <div class="nav-item" id="nav-draw" onclick="navTo('draw')"><i class="ti ti-dice"></i>抽籤管理</div>
       <div class="nav-item" id="nav-calls" onclick="navTo('calls')"><i class="ti ti-phone"></i>電話記錄</div>
       <div class="nav-item" id="nav-contacts" onclick="navTo('contacts')"><i class="ti ti-address-book"></i>通訊錄</div>
       <div class="nav-item" id="nav-announce" onclick="navTo('announce')"><i class="ti ti-speakerphone"></i>公告管理</div>
@@ -816,7 +815,7 @@ function renderOwnerList() {
       onclick="selectOwner('${o.owner_id}')" class="owner-row">
       <div style="font-size:12px;color:var(--tt);padding-top:2px;">${o.serial_no||''}</div>
       <div>
-        <div style="font-weight:500;">${o.name||''}${(o.has_agent==='true'||o.has_agent===true)?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;">代理</span>':''}</div>
+        <div style="font-weight:500;">${o.name||''}${(o.has_agent==='true'||o.has_agent===true)?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;">代理</span>':''}${prog.problem>0?` <span style="font-size:10px;color:var(--orange-text);background:var(--orange-bg);padding:0 5px;border-radius:6px;" title="文件有備註/問題，請通知補件">⚠ 待補件 ${prog.problem}</span>`:''}</div>
         ${selLine}${settleLine}
       </div>
       <div style="padding-top:2px;display:flex;flex-direction:column;gap:3px;align-items:flex-start;">${statusBadge}</div>
