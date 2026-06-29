@@ -2444,10 +2444,11 @@ function renderMergeList() {
     const splitRows = split.map(s => {
       const u = MERGE_STATE.usage[s.owner_id];
       const ss = Number(s.settlement)||0;
-      return `<div class="flex justify-between text-xs" style="padding:3px 0;border-top:0.5px solid var(--bt);">
-        <span>${u?u.name:s.owner_id}（投入 ${fmt(s.invested)}，${Math.round(s.ratio*100)}%）</span>
-        <span style="color:${ss>0?'var(--red-text)':ss<0?'var(--green-text)':'var(--tt)'};">
-          ${ss>0?'補 '+fmt(ss):ss<0?'退 '+fmt(-ss):'—'}</span>
+      const pu = Number(s.personal_used)||0;
+      return `<div class="flex justify-between text-xs" style="padding:4px 0;border-top:0.5px solid var(--bt);">
+        <span>${u?u.name:s.owner_id}
+          <span class="text-muted">（本組投入 ${fmt(s.invested)}${pu>0?'・個人選配 '+fmt(pu):''}）</span></span>
+        <span style="color:${ss>0?'var(--red-text)':ss<0?'var(--green-text)':'var(--tt)'};">找補 ${ss>0?'補 '+fmt(ss):ss<0?'退 '+fmt(-ss):'0'}</span>
       </div>`;
     }).join('');
 
@@ -2474,7 +2475,7 @@ function renderMergeList() {
           <div class="text-xs text-muted">選配總價</div>
           <div style="font-weight:500;">NT$${fmt(g.total_selected)}</div>
           <div class="text-xs" style="color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
-            ${settle>0?'組需補繳 '+fmt(settle):settle<0?'組可退還 '+fmt(-settle):'無找補'}</div>
+            成員找補合計（含個人選配）：${settle>0?'補 '+fmt(settle):settle<0?'退 '+fmt(-settle):'0'}</div>
         </div>
       </div>
       <div style="background:var(--cs);border-radius:6px;padding:8px 10px;">
