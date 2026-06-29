@@ -1026,10 +1026,16 @@ function renderDocChecklist(ownerId) {
         : `<i class="ti ti-circle" style="font-size:15px;color:var(--tt);"></i>`;
 
     const statusLabel = uploaded
-      ? `<span style="font-size:10px;color:var(--green-text);margin-left:auto;">已歸檔</span>`
+      ? (note
+          ? `<span style="font-size:10px;color:var(--orange-text);margin-left:auto;">已歸檔·待補正</span>`
+          : `<span style="font-size:10px;color:var(--green-text);margin-left:auto;">已歸檔</span>`)
       : physical
-        ? `<span style="font-size:10px;color:var(--brand-text);margin-left:auto;">實體✓ 待掃</span>`
-        : `<span style="font-size:10px;color:var(--red-text);margin-left:auto;">待收</span>`;
+        ? (note
+            ? `<span style="font-size:10px;color:var(--orange-text);margin-left:auto;">已收·待補正</span>`
+            : `<span style="font-size:10px;color:var(--brand-text);margin-left:auto;">實體✓ 待掃</span>`)
+        : (note
+            ? `<span style="font-size:10px;color:var(--orange-text);margin-left:auto;">待收·有問題</span>`
+            : `<span style="font-size:10px;color:var(--red-text);margin-left:auto;">待收</span>`);
 
     // 現場快速勾選按鈕（僅實體未確認時顯示）
     const quickBtn = !physical && !uploaded
