@@ -83,6 +83,7 @@ tr.selected td{background:#EDF5FB;}
 /* Progress bar */
 .pbar-bg{height:6px;background:var(--ct);border-radius:3px;overflow:hidden;}
 .pbar-fill{height:100%;border-radius:3px;transition:width .3s;}
+.price-row:hover{background:var(--cs);}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Modal */
@@ -479,6 +480,34 @@ function togglePriceTable(force) {
   }
 }
 function _parseList(v) { return Array.isArray(v) ? v : (() => { try { return JSON.parse(v || '[]'); } catch (e) { return []; } })(); }
+
+// 是否正開著「改選/選屋」彈窗（決定點價目表能否自動填入）
+function _selModalOpen() {
+  const ov = document.getElementById('modal-overlay');
+  return !!(ov && ov.classList.contains('open') && document.getElementById('sel-units'));
+}
+// 短暫提示（顯示在價目表頂端 hint 列，1.6 秒後復原）
+function flashPriceHint(msg, ok) {
+  const h = document.getElementById('price-hint');
+  if (!h) return;
+  h.innerHTML = msg;
+  h.style.background = ok ? 'var(--green-bg)' : 'var(--orange-bg)';
+  h.style.color = ok ? 'var(--green-text)' : 'var(--orange-text)';
+  clearTimeout(window._priceHintT);
+  window._priceHintT = setTimeout(() => { if (document.getElementById('price-panel')?.style.display === 'flex') renderPriceTable(); }, 1600);
+}
+// 點價目表項目 → 自動填入選屋表單的「已選戶別/已選車位」
+function priceFill(type, code) {
+  if (!_selModalOpen()) { flashPriceHint('請先打開某位地主的「改選」，再點項目自動填入', false); return; }
+  const inp = document.getElementById(type === 'unit' ? 'sel-units' : 'sel-parks');
+  const cur = inp.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  if (cur.some(c => c.toUpperCase() === String(code).toUpperCase())) { flashPriceHint(code + '　已在清單中', false); return; }
+  cur.push(code);
+  inp.value = cur.join(',');
+  inp.dispatchEvent(new Event('input', { bubbles: true }));   // 觸發 previewCodes 即時預覽
+  if (window.SEL_EDIT_OWNER != null && typeof previewSelection === 'function') { try { previewSelection(window.SEL_EDIT_OWNER); } catch (e) {} }
+  flashPriceHint('已填入 ' + code + ' → ' + (type === 'unit' ? '已選戶別' : '已選車位'), true);
+}
 function renderPriceTable() {
   const raw = document.getElementById('price-search')?.value || '';
   const terms = raw.toLowerCase().split(/[\s,，、]+/).map(t => t.trim()).filter(Boolean);
@@ -510,12 +539,16 @@ function renderPriceTable() {
   const pList = Object.values(parks).filter(p => match(p.parking_no))
     .sort((a, b) => String(a.parking_no).padStart(8,'0').localeCompare(String(b.parking_no).padStart(8,'0')));
 
-  const uRows = uList.map(u => `<tr><td ${tdL}>${u.unit_no}</td><td ${tdR}>${u.area_sqp||''}</td><td ${tdR}>${fmt(u.total_value)}</td><td ${tdR}>${u.terrace_price?fmt(u.terrace_price):'—'}</td>${cntCell(uCount[u.unit_no]||0)}</tr>`).join('')
+  const selOpen = _selModalOpen();
+  const uRows = uList.map(u => `<tr class="price-row" style="cursor:pointer;" title="點一下填入已選戶別" onclick="priceFill('unit','${u.unit_no}')"><td ${tdL}>${u.unit_no}</td><td ${tdR}>${u.area_sqp||''}</td><td ${tdR}>${fmt(u.total_value)}</td><td ${tdR}>${u.terrace_price?fmt(u.terrace_price):'—'}</td>${cntCell(uCount[u.unit_no]||0)}</tr>`).join('')
     || `<tr><td colspan="5" style="padding:8px;color:var(--tt);">無符合</td></tr>`;
-  const pRows = pList.map(p => `<tr><td ${tdL}>${p.parking_no}</td><td ${tdL}>${p.size||''}</td><td ${tdR}>${fmt(p.price)}</td>${cntCell(pCount[p.parking_no]||0)}</tr>`).join('')
+  const pRows = pList.map(p => `<tr class="price-row" style="cursor:pointer;" title="點一下填入已選車位" onclick="priceFill('parking','${p.parking_no}')"><td ${tdL}>${p.parking_no}</td><td ${tdL}>${p.size||''}</td><td ${tdR}>${fmt(p.price)}</td>${cntCell(pCount[p.parking_no]||0)}</tr>`).join('')
     || `<tr><td colspan="4" style="padding:8px;color:var(--tt);">無符合</td></tr>`;
 
-  document.getElementById('price-content').innerHTML = `
+  const fillHint = selOpen
+    ? `<div id="price-hint" style="font-size:11px;color:var(--brand-text);background:var(--brand-bg);padding:5px 8px;border-radius:6px;margin:6px 0;">✦ 選屋視窗開啟中：點任一列即可<b>自動填入</b>表單</div>`
+    : `<div id="price-hint" style="font-size:11px;color:var(--tt);margin:6px 0;">（開著地主「改選」時，點任一列可自動填入表單）</div>`;
+  document.getElementById('price-content').innerHTML = fillHint + `
     <div style="font-size:12px;font-weight:600;color:var(--ts);margin:8px 0 4px;">🏠 戶別（${uList.length}）</div>
     <table style="width:100%;font-size:12px;border-collapse:collapse;">
       <thead><tr><th ${th}>戶別</th><th ${th} style="text-align:right;">坪數</th><th ${th} style="text-align:right;">總價(含露臺)</th><th ${th} style="text-align:right;">露臺價</th><th ${th} style="text-align:right;">已選</th></tr></thead>
