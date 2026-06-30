@@ -330,6 +330,25 @@ tr.selected td{background:#EDF5FB;}
   </div>
 </div>
 
+<!-- 浮動「戶別/車位價目表」：任何頁面都能查，不用切頁籤 -->
+<div id="price-fab" onclick="openPriceTable()" title="戶別／車位 價目表"
+  style="position:fixed;right:18px;bottom:18px;z-index:50;background:var(--brand);color:#fff;border-radius:24px;
+  padding:10px 16px;font-size:13px;font-weight:500;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.22);user-select:none;">
+  <i class="ti ti-table"></i> 價目表
+</div>
+<div id="price-modal" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.4);"
+  onclick="if(event.target===this)this.style.display='none'">
+  <div style="position:absolute;right:0;top:0;height:100%;width:min(460px,94vw);background:var(--cp);
+    box-shadow:-2px 0 14px rgba(0,0,0,.18);display:flex;flex-direction:column;">
+    <div style="padding:12px 16px;border-bottom:0.5px solid var(--bt);display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-weight:600;font-size:14px;"><i class="ti ti-table"></i> 戶別／車位 價目表</span>
+      <button onclick="document.getElementById('price-modal').style.display='none'" class="btn-secondary" style="padding:3px 8px;">✕</button>
+    </div>
+    <div style="padding:10px 16px;"><input type="text" id="price-search" placeholder="搜尋戶別或車位…（例 3F-A2、B2）" oninput="renderPriceTable(this.value)" style="width:100%;"></div>
+    <div id="price-content" style="flex:1;overflow:auto;padding:0 16px 16px;"></div>
+  </div>
+</div>
+
 <script>
 // ============================================================
 //  CONFIG — Change before deploy
@@ -441,6 +460,42 @@ async function preloadUnitParking() {
   window.DASHBOARD_UNIT_MAP = window.CACHE.units;  // 供儀表板用
   MERGE_STATE.unitMap  = window.CACHE.units;
   MERGE_STATE.parkMap  = window.CACHE.parking;
+}
+
+// 浮動價目表：開啟 + 渲染（戶別價/車位價，供與地主諮詢時即時查，不用切頁籤）
+function openPriceTable() {
+  document.getElementById('price-modal').style.display = 'block';
+  if (!window.CACHE?.units || !Object.keys(window.CACHE.units).length) {
+    document.getElementById('price-content').innerHTML = '<div class="text-xs text-muted" style="padding:16px;">載入中…</div>';
+    preloadUnitParking().then(() => renderPriceTable(document.getElementById('price-search')?.value || ''));
+  } else {
+    renderPriceTable(document.getElementById('price-search')?.value || '');
+  }
+}
+function renderPriceTable(q) {
+  q = (q || '').toLowerCase().trim();
+  const units = window.CACHE?.units || {};
+  const parks = window.CACHE?.parking || {};
+  const th = 'style="text-align:left;color:var(--tt);font-weight:500;padding:3px 4px;border-bottom:0.5px solid var(--bt);"';
+  const tdL = 'style="padding:3px 4px;border-bottom:0.5px solid var(--bt);"';
+  const tdR = 'style="padding:3px 4px;border-bottom:0.5px solid var(--bt);text-align:right;"';
+  const uList = Object.values(units).filter(u => !q || String(u.unit_no).toLowerCase().includes(q))
+    .sort((a, b) => String(a.unit_no).padStart(8,'0').localeCompare(String(b.unit_no).padStart(8,'0')));
+  const pList = Object.values(parks).filter(p => !q || String(p.parking_no).toLowerCase().includes(q))
+    .sort((a, b) => String(a.parking_no).padStart(8,'0').localeCompare(String(b.parking_no).padStart(8,'0')));
+  const uRows = uList.map(u => `<tr><td ${tdL}>${u.unit_no}</td><td ${tdR}>${u.area_sqp||''}</td><td ${tdR}>${fmt(u.total_value)}</td><td ${tdR}>${u.terrace_price?fmt(u.terrace_price):'—'}</td></tr>`).join('')
+    || `<tr><td colspan="4" style="padding:8px;color:var(--tt);">無符合</td></tr>`;
+  const pRows = pList.map(p => `<tr><td ${tdL}>${p.parking_no}</td><td ${tdL}>${p.size||''}</td><td ${tdR}>${fmt(p.price)}</td></tr>`).join('')
+    || `<tr><td colspan="3" style="padding:8px;color:var(--tt);">無符合</td></tr>`;
+  document.getElementById('price-content').innerHTML = `
+    <div style="font-size:12px;font-weight:600;color:var(--ts);margin:8px 0 4px;">🏠 戶別（${uList.length}）</div>
+    <table style="width:100%;font-size:12px;border-collapse:collapse;">
+      <thead><tr><th ${th}>戶別</th><th ${th} style="text-align:right;">坪數</th><th ${th} style="text-align:right;">總價(含露臺)</th><th ${th} style="text-align:right;">露臺價</th></tr></thead>
+      <tbody>${uRows}</tbody></table>
+    <div style="font-size:12px;font-weight:600;color:var(--ts);margin:16px 0 4px;">🚗 車位（${pList.length}）</div>
+    <table style="width:100%;font-size:12px;border-collapse:collapse;">
+      <thead><tr><th ${th}>車位</th><th ${th}>規格</th><th ${th} style="text-align:right;">價格</th></tr></thead>
+      <tbody>${pRows}</tbody></table>`;
 }
 
 async function loadAll() {
@@ -912,11 +967,11 @@ function renderOwnerDetail(ownerId) {
           <div style="position:absolute;top:-3px;height:15px;width:2px;background:var(--red-text);right:0;"></div>
           <div style="position:absolute;top:14px;right:0;font-size:9px;color:var(--red-text);white-space:nowrap;">110%</div>
         </div>
-        <span style="font-size:13px;font-weight:500;">${pct}%</span>
+        <span style="font-size:13px;font-weight:500;white-space:nowrap;color:${total>rights?'var(--red-text)':'var(--tp)'};">已用權值 ${rights>0?Math.round(total/rights*100):0}%</span>
       </div>
       <div style="height:12px;"></div>
       <div class="flex justify-between text-xs text-muted">
-        <span>已選 NT$${fmt(total)}</span><span>上限 NT$${fmt(limit)}</span>
+        <span>已選 NT$${fmt(total)}</span><span>權值 NT$${fmt(rights)}・上限 NT$${fmt(limit)}</span>
       </div>
     </div>
 
