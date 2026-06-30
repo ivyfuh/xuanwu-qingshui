@@ -2748,17 +2748,11 @@ function defaultFracsByRemaining(members) {
   return frac;
 }
 
-// 由各人「金額」算出分子/分母（共同分母＝選配總價÷最大公因數），分子＝各人金額÷最大公因數
+// 各人持分：分母＝選配總價（固定，不約分），分子＝各人出資金額。持分皆整數、無小數。
 function fracsFromInvests(members, total) {
   const frac = {};
-  const gcd = (a, b) => b ? gcd(b, a % b) : a;
-  const vals = members.map(oid => Math.max(0, Math.round(Number(MERGE_STATE.invest[oid]) || 0)));
-  if (!(total > 0)) { members.forEach(oid => frac[oid] = { num: 0, den: 1 }); return frac; }
-  let g = Math.round(total);
-  vals.forEach(v => g = gcd(g, v));
-  g = g || 1;
-  const den = Math.round(total / g);
-  members.forEach((oid, i) => frac[oid] = { num: Math.round(vals[i] / g), den: den });
+  const den = Math.max(1, Math.round(total));
+  members.forEach(oid => frac[oid] = { num: Math.max(0, Math.round(Number(MERGE_STATE.invest[oid]) || 0)), den: den });
   return frac;
 }
 
@@ -2780,13 +2774,21 @@ function recalcMerge(skipAmountRender) {
   // 以「金額」為主：移除非成員的金額
   MERGE_STATE.invest = MERGE_STATE.invest || {};
   Object.keys(MERGE_STATE.invest).forEach(oid => { if (!members.includes(oid)) delete MERGE_STATE.invest[oid]; });
-  // 未手動 → 按各人剩餘值自動分攤金額（加總＝選配總價）；手動 → 沿用使用者填的金額
+  // 未手動 → 按各人剩餘值自動分攤金額（最後一位吃進位差，加總＝總價）
+  // 手動 → 前面幾位沿用使用者填的金額，「最後一位」自動補足＝總價−其他人加總
   if (!MERGE_STATE.manualInvest) {
     autoDistributeInvest(total);
   } else {
-    members.forEach(oid => { if (MERGE_STATE.invest[oid] == null) MERGE_STATE.invest[oid] = 0; });
+    let s = 0;
+    for (let i = 0; i < members.length - 1; i++) {
+      const oid = members[i];
+      if (MERGE_STATE.invest[oid] == null) MERGE_STATE.invest[oid] = 0;
+      s += Number(MERGE_STATE.invest[oid]) || 0;
+    }
+    const last = members[members.length - 1];
+    if (last) MERGE_STATE.invest[last] = Math.max(0, Math.round(total - s));
   }
-  // 分子/分母由金額自動算（共同分母＝選配總價÷最大公因數），唯讀顯示
+  // 持分：分母＝總價、分子＝金額
   MERGE_STATE.frac = fracsFromInvests(members, total);
 
   // 已選組員 chips 顯示在上方
@@ -2803,39 +2805,45 @@ function recalcMerge(skipAmountRender) {
       : '<span class="text-xs text-muted">尚未選擇組員</span>';
   }
 
-  // 各人「分子 / 分母」↔「金額」雙向：改分數算金額、改金額反推分數
-  const _gridCols = '1fr 92px 10px 92px 118px';
+  // 出資：分母＝選配總價(固定)，分子＝出資金額(可改)；最後一位自動補足；右側顯示出資比
+  const _gridCols = '1fr 120px 118px 56px';
+  const _lastOid = members[members.length - 1];
   if (!skipAmountRender) {
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
-      rowsEl.innerHTML = `<div style="display:grid;grid-template-columns:${_gridCols};gap:5px;font-size:11px;color:var(--tt);margin-bottom:4px;">
-          <div>組員</div><div style="text-align:center;">分子</div><div></div><div style="text-align:center;">分母</div><div style="text-align:right;">金額(可改)</div>
-        </div>` + members.map(oid => {
+      rowsEl.innerHTML = `<div style="font-size:11px;color:var(--tt);margin-bottom:4px;">分母＝選配總價（固定）；前面各位填出資金額，<b>最後一位自動補足</b>。</div>
+        <div style="display:grid;grid-template-columns:${_gridCols};gap:6px;font-size:11px;color:var(--tt);margin-bottom:4px;">
+          <div>組員</div><div style="text-align:right;">出資金額(分子)</div><div style="text-align:center;">／ 總價(分母)</div><div style="text-align:right;">出資比</div>
+        </div>` + members.map((oid, i) => {
         const u = MERGE_STATE.usage[oid] || {};
-        const f = MERGE_STATE.frac[oid] || { num: 1, den: 1 };
         const amt = MERGE_STATE.invest[oid] || 0;
         const _rem = mergeRemainOf(oid);
         const overRemain = amt > _rem + 1;
-        return `<div style="display:grid;grid-template-columns:${_gridCols};gap:5px;align-items:center;margin-bottom:6px;">
+        const isLast = oid === _lastOid;
+        const pct = total > 0 ? (amt/total*100).toFixed(1) : '0.0';
+        return `<div style="display:grid;grid-template-columns:${_gridCols};gap:6px;align-items:center;margin-bottom:6px;">
           <span style="font-size:12px;">${u.name||oid}
             <span class="text-xs ${overRemain?'':'text-muted'}" style="${overRemain?'color:var(--red-text);':''}">（剩餘 ${fmt(_rem)}）</span></span>
-          <span class="merge-num-disp" style="text-align:center;font-size:13px;font-weight:500;overflow:hidden;" title="由金額自動計算">${f.num}</span>
-          <span style="text-align:center;color:var(--tt);font-size:15px;">/</span>
-          <span class="merge-den-disp" style="text-align:center;font-size:13px;font-weight:500;overflow:hidden;" title="由金額自動計算">${f.den}</span>
-          <input type="text" inputmode="numeric" class="merge-amt" value="${amt}" oninput="setMergeAmount('${oid}',this.value)" title="填金額，分子/分母自動算" style="text-align:right;font-size:13px;padding:7px 5px;height:34px;font-weight:500;color:${overRemain?'var(--red-text)':'var(--tp)'};">
+          ${isLast
+            ? `<input type="text" class="merge-amt" value="${amt}" readonly title="最後一位自動補足＝總價−其他人加總" style="text-align:right;font-size:13px;padding:7px 5px;height:34px;font-weight:500;background:var(--cs);color:var(--tt);">`
+            : `<input type="text" inputmode="numeric" class="merge-amt" value="${amt}" oninput="setMergeAmount('${oid}',this.value)" title="填出資金額" style="text-align:right;font-size:13px;padding:7px 5px;height:34px;font-weight:500;color:${overRemain?'var(--red-text)':'var(--tp)'};">`}
+          <span style="text-align:center;color:var(--tt);font-size:12px;">／ ${fmt(total)}</span>
+          <span class="merge-pct" style="text-align:right;font-size:12px;font-weight:500;color:var(--brand-text);">${pct}%</span>
         </div>`;
       }).join('');
     }
   } else {
-    // 打字中（改金額）：只更新唯讀的分子/分母顯示，不重畫金額框（保住游標）
+    // 打字中（改某人金額）：更新最後一位自動金額 + 所有出資比，不動正在打字的格子
     const rowsEl = document.getElementById('merge-invest-rows');
     if (rowsEl) {
       members.forEach((oid, i) => {
-        const rowEl = rowsEl.children[i + 1];   // 第一個是表頭
+        const rowEl = rowsEl.children[i + 2];   // 前兩個是說明 + 表頭
         if (!rowEl) return;
-        const f = MERGE_STATE.frac[oid] || {};
-        const n = rowEl.querySelector('.merge-num-disp'); if (n) n.textContent = f.num;
-        const d = rowEl.querySelector('.merge-den-disp'); if (d) d.textContent = f.den;
+        const amt = MERGE_STATE.invest[oid] || 0;
+        const amtEl = rowEl.querySelector('.merge-amt');
+        if (amtEl && document.activeElement !== amtEl) amtEl.value = amt;
+        const pctEl = rowEl.querySelector('.merge-pct');
+        if (pctEl) pctEl.textContent = (total > 0 ? (amt/total*100).toFixed(1) : '0.0') + '%';
       });
     }
   }
