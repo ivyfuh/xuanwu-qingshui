@@ -909,6 +909,9 @@ function renderOwnerDetail(ownerId) {
 
   const rights = Number(owner.rights_value) || 0;
   const limit  = Number(owner.upper_limit) || 0;
+  // 權值占比 = 該地主權值 ÷ 全案總權值（地主常問「我占幾%」）
+  const totalRights = (STATE.owners || []).reduce((s, o) => s + (Number(o.rights_value) || 0), 0);
+  const sharePct = totalRights > 0 ? (rights / totalRights * 100) : 0;
   const personalTotal = sel ? (Number(sel.total_value) || 0) : 0;
   // #22 合併同步：把該地主在合併組的投入也算進總額/找補/使用率
   const mInfo = getMergeInfoForOwner(ownerId);
@@ -946,6 +949,7 @@ function renderOwnerDetail(ownerId) {
       <div>
         <div style="font-size:16px;font-weight:500;">${owner.name||''}</div>
         <div class="text-xs text-muted mt-1">編號 ${owner.serial_no||''} · ${owner.handler||''}</div>
+        <div class="text-xs mt-1" style="color:var(--brand-text);">權值占比 <b>${sharePct.toFixed(2)}%</b>（權值 NT$${fmt(rights)}／全案 NT$${fmt(totalRights)}）</div>
       </div>
       <div class="flex gap-6 items-center">
         <span class="badge ${stMap[st]||''}">${stLabel[st]||''}</span>
