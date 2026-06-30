@@ -2183,21 +2183,37 @@ function renderSettings() {
       <div style="font-size:14px;font-weight:500;margin-bottom:4px;color:var(--red-text);">正式上線</div>
       <div class="text-xs text-muted" style="margin-bottom:10px;line-height:1.6;">
         目前環境：<b>${cfg.env==='production'?'正式版（production）':'測試環境（test）'}</b>。<br>
-        按「一鍵正式上線」會清空所有<b>手動測試資料</b>：① <b>選屋／合併</b> ② <b>通話記錄</b> ③ <b>收件／同意書勾記</b> ④ 操作紀錄；並 ⑤ participate 全還原成參與 ⑥ 切換成<b>正式版</b>。<br><b>地主名單／通訊錄（姓名電話地址）＝匯入底資料，不會動。不可復原</b>，需輸入上線密碼。
+        按「一鍵正式上線」會：① 清空所有<b>選屋／合併</b>資料 ② participate 全還原成參與 ③ 切換成<b>正式版</b>（移除公開頁的測試橫幅）。<b>不可復原</b>，需輸入上線密碼。
       </div>
       <button class="btn-secondary" style="border-color:var(--red);color:var(--red-text);" onclick="doGoLive()"><i class="ti ti-rocket"></i> 一鍵正式上線（清空測試資料＋切正式）</button>
+      <div class="text-xs text-muted" style="margin:14px 0 6px;line-height:1.6;border-top:0.5px solid var(--bt);padding-top:12px;">
+        <b>只清「收件記錄」</b>：清掉 documents 內的測試收件／同意書勾記（雲端檔案請自行刪）。<b>地主、選屋、通話、其餘一律不動。</b>需密碼。
+      </div>
+      <button class="btn-secondary" style="border-color:var(--red);color:var(--red-text);" onclick="doClearDocs()"><i class="ti ti-file-shredder"></i> 只清空收件記錄（測試）</button>
     </div>
   `;
 }
 
 async function doGoLive() {
-  const pass = prompt('⚠ 一鍵正式上線\n會清空所有手動測試資料（選屋／合併／通話／收件／操作紀錄）並切換正式版，不可復原。\n地主名單／通訊錄不會動。\n請輸入上線密碼確認：');
+  const pass = prompt('⚠ 一鍵正式上線\n會「清空所有選屋／合併資料」並「切換成正式版」，不可復原。\n請輸入上線密碼確認：');
   if (pass === null) return;
   if (pass.trim() !== '0988664330') { alert('密碼錯誤，未執行任何動作。'); return; }
-  if (!confirm('最後確認：清空 選屋＋合併＋通話記錄＋收件＋操作紀錄、participate 全還原、切換正式版。\n地主／通訊錄不動。確定執行？')) return;
+  if (!confirm('最後確認：將清空 selections + merge_groups、participate 全還原、切換正式版。\n確定執行？')) return;
   try {
     const r = await apiPost('goLive', { password: pass.trim() });
-    alert(`✅ 已正式上線！\n清空：選配 ${r.selCleared} 筆、合併 ${r.mCleared} 組、通話 ${r.callCleared||0} 筆、收件 ${r.docCleared||0} 筆、紀錄 ${r.logCleared||0} 筆。\n還原參與 ${r.pFixed} 位。環境：正式版`);
+    alert(`✅ 已正式上線！\n清空選配 ${r.selCleared} 筆、合併 ${r.mCleared} 組、還原參與 ${r.pFixed} 位。\n環境：正式版`);
+    location.reload();
+  } catch(e) { alert('失敗：' + e.message); }
+}
+
+async function doClearDocs() {
+  const pass = prompt('⚠ 只清「收件記錄」\n會清掉 documents 內所有測試收件／同意書勾記（雲端檔案請自行刪除）。\n地主、選屋、通話等一律不動，不可復原。\n請輸入密碼確認：');
+  if (pass === null) return;
+  if (pass.trim() !== '0988664330') { alert('密碼錯誤，未執行任何動作。'); return; }
+  if (!confirm('最後確認：清空 documents（收件記錄）。\n地主／選屋／通話皆不動。確定執行？')) return;
+  try {
+    const r = await apiPost('clearTestDocs', { password: pass.trim() });
+    alert(`✅ 已清空收件記錄 ${r.docCleared||0} 筆。`);
     location.reload();
   } catch(e) { alert('失敗：' + e.message); }
 }
