@@ -874,8 +874,16 @@ function renderOwnerList() {
       if (allTags.length) selLine = `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;">${allTags.join('')}</div>`;
     }
 
-    // 找補（清單顯示）：選配總值 − 更新後權利價值
-    const settleVal = (sel && !nonpart) ? ((Number(sel.total_value)||0) - (Number(o.rights_value)||0)) : null;
+    // 權值／上限／已選金額（含合併投入）一覽
+    const rightsV = Number(o.rights_value) || 0;
+    const limitV  = Number(o.upper_limit) || 0;
+    const mInfoRow = getMergeInfoForOwner(o.owner_id);
+    const selTotal = (sel && !nonpart ? Number(sel.total_value)||0 : 0) + (mInfoRow.invested || 0);
+    const valLine = nonpart ? '' :
+      `<div style="font-size:10px;margin-top:2px;color:var(--tt);">權值 <b style="color:var(--ts);">${fmt(rightsV)}</b> ・ 上限 ${fmt(limitV)} ・ 已選 <b style="color:var(--ts);">${fmt(selTotal)}</b></div>`;
+
+    // 找補（清單顯示）：已選金額(含合併) − 更新後權利價值
+    const settleVal = (!nonpart && (sel || mInfoRow.invested > 0)) ? (selTotal - rightsV) : null;
     const settleLine = settleVal == null ? '' :
       `<div style="font-size:10px;margin-top:2px;color:${settleVal>0?'var(--red-text)':settleVal<0?'var(--green-text)':'var(--tt)'};">找補 ${settleVal>0?'補 NT$'+fmt(settleVal):settleVal<0?'退 NT$'+fmt(-settleVal):'0'}</div>`;
 
@@ -900,7 +908,7 @@ function renderOwnerList() {
       <div style="font-size:12px;color:var(--tt);padding-top:2px;">${o.serial_no||''}</div>
       <div>
         <div style="font-weight:500;">${o.name||''}${(o.has_agent==='true'||o.has_agent===true)?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;">代理</span>':''}${getMergeInfoForOwner(o.owner_id).inMerge?' <span style="font-size:10px;color:var(--brand-text);background:var(--brand-bg);padding:0 5px;border-radius:6px;" title="參與合併選配">合併</span>':''}${prog.problem>0?` <span style="font-size:10px;color:var(--orange-text);background:var(--orange-bg);padding:0 5px;border-radius:6px;" title="文件有備註/問題，請通知補件">⚠ 待補件 ${prog.problem}</span>`:''}</div>
-        ${selLine}${settleLine}
+        ${selLine}${valLine}${settleLine}
       </div>
       <div style="padding-top:2px;display:flex;flex-direction:column;gap:3px;align-items:flex-start;">${statusBadge}</div>
       <div>${physBadge}</div>
