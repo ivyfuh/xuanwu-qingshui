@@ -913,12 +913,16 @@ function renderOwnerList() {
     const mInfoRow = getMergeInfoForOwner(o.owner_id);
     const selTotal = (sel && !nonpart ? Number(sel.total_value)||0 : 0) + (mInfoRow.invested || 0);
     const valLine = nonpart ? '' :
-      `<div style="font-size:10px;margin-top:2px;color:var(--tt);">權值 <b style="color:var(--ts);">${fmt(rightsV)}</b> ・ 上限 ${fmt(limitV)} ・ 已選 <b style="color:var(--ts);">${fmt(selTotal)}</b></div>`;
+      `<div style="display:flex;gap:18px;margin-top:5px;font-size:10px;line-height:1.25;">
+        <span style="color:var(--tt);">權值<br><span style="color:var(--ts);font-size:12px;">${fmt(rightsV)}</span></span>
+        <span style="color:var(--tt);">上限<br><span style="color:var(--ts);font-size:12px;">${fmt(limitV)}</span></span>
+        <span style="color:var(--tt);">已選<br><span style="color:var(--tp);font-size:12px;font-weight:500;">${fmt(selTotal)}</span></span>
+      </div>`;
 
     // 找補（清單顯示）：已選金額(含合併) − 更新後權利價值
     const settleVal = (!nonpart && (sel || mInfoRow.invested > 0)) ? (selTotal - rightsV) : null;
     const settleLine = settleVal == null ? '' :
-      `<div style="font-size:10px;margin-top:2px;color:${settleVal>0?'var(--red-text)':settleVal<0?'var(--green-text)':'var(--tt)'};">找補 ${settleVal>0?'補 NT$'+fmt(settleVal):settleVal<0?'退 NT$'+fmt(-settleVal):'0'}</div>`;
+      `<div style="font-size:12px;margin-top:5px;border-top:0.5px solid var(--bt);padding-top:4px;color:${settleVal>0?'var(--red-text)':settleVal<0?'var(--green-text)':'var(--tt)'};">找補 ${settleVal>0?'補 NT$'+fmt(settleVal):settleVal<0?'退 NT$'+fmt(-settleVal):'0'}</div>`;
 
     // 狀態標籤：不參與另外處理；其餘可「同時」顯示超選＋重複等多個標籤
     let statusBadge;
