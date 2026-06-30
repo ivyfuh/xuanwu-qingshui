@@ -71,21 +71,17 @@
   <div id="app" style="display:none;">
     <!-- 記新來電 -->
     <div class="card">
-      <h2>記一筆通話</h2>
+      <h2>記一筆來電</h2>
       <label>搜尋地主（姓名 / 編號 / 電話）</label>
       <input type="text" id="owner-search" placeholder="輸入後點選下方地主" autocomplete="off" oninput="renderOwnerResults()">
       <div id="owner-results" class="results" style="display:none;"></div>
       <div id="owner-pick" style="display:none;">
         <div class="ownerbox" id="owner-info"></div>
         <div class="row">
-          <div><label>通話別</label>
-            <select id="f-type"><option value="來電">來電</option><option value="去電">去電</option></select></div>
-          <div><label>電話</label><input type="tel" id="f-phone" placeholder="電話"></div>
-        </div>
-        <div class="row">
           <div><label>來電者姓名</label><input type="text" id="f-caller" placeholder="若同地主可留空"></div>
           <div><label>身分</label><select id="f-agent"><option value="false">本人</option><option value="true">代理人</option></select></div>
         </div>
+        <label>電話</label><input type="tel" id="f-phone" placeholder="電話">
         <label>問題 / 來電事由</label>
         <textarea id="f-issue" placeholder="例：詢問選屋期間、要求改約看屋…"></textarea>
         <label>期望回覆 / 後續</label>
@@ -211,7 +207,7 @@ async function submitCall(){
       owner_id: PICKED.owner_id, owner_name: PICKED.name || '',
       caller_name: document.getElementById('f-caller').value.trim(),
       is_agent: document.getElementById('f-agent').value,
-      call_type: document.getElementById('f-type').value,
+      call_type: '來電',
       phone: document.getElementById('f-phone').value.trim(),
       issue: issue,
       expected_reply: document.getElementById('f-expected').value.trim(),
