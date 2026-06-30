@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>話務記錄 — 清水段選屋</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --bg:#F7F6F2; --cp:#fff; --cs:#F1EFE8; --bt:#E5E2DA;
+    --tp:#2C2C2A; --ts:#444441; --tt:#8A877E;
+    --brand:#2F6F8F; --brand-bg:#E8F1F5; --brand-text:#1E5570;
+    --red:#CC3B3B; --red-bg:#FBEAEA; --green:#1E8E5A; --green-bg:#E5F4EC; --orange-text:#B26A00;
+    --r:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;background:var(--bg);color:var(--tp);font-size:14px;line-height:1.5;}
+  header{background:var(--cp);border-bottom:0.5px solid var(--bt);padding:10px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10;}
+  header .title{font-weight:600;font-size:16px;}
+  header .case{background:var(--cs);color:var(--ts);padding:2px 8px;border-radius:8px;font-size:11px;}
+  header .right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+  #user-label{font-size:11px;color:var(--tt);}
+  .wrap{max-width:760px;margin:0 auto;padding:16px;}
+  .card{background:var(--cp);border:0.5px solid var(--bt);border-radius:var(--r);padding:16px;margin-bottom:16px;}
+  .card h2{font-size:14px;font-weight:600;margin:0 0 12px;}
+  label{display:block;font-size:12px;color:var(--ts);margin:10px 0 4px;}
+  input[type=text],input[type=tel],textarea,select{width:100%;padding:9px 10px;border:0.5px solid var(--bt);border-radius:8px;font-size:14px;font-family:inherit;background:var(--cp);color:var(--tp);}
+  textarea{resize:vertical;min-height:48px;}
+  .row{display:flex;gap:10px;}.row>*{flex:1;}
+  .btn{padding:9px 14px;border:0.5px solid var(--bt);border-radius:8px;background:var(--cp);color:var(--tp);font-size:13px;cursor:pointer;font-family:inherit;}
+  .btn:hover{background:var(--cs);}
+  .btn-primary{background:var(--brand);color:#fff;border-color:var(--brand);}
+  .btn-primary:hover{opacity:.92;background:var(--brand);}
+  .btn-green{background:var(--green);color:#fff;border-color:var(--green);}.btn-green:hover{opacity:.92;background:var(--green);}
+  .btn-sm{padding:5px 9px;font-size:12px;}
+  .muted{color:var(--tt);font-size:12px;}
+  .results{border:0.5px solid var(--bt);border-radius:8px;margin-top:4px;max-height:230px;overflow:auto;}
+  .results .it{padding:8px 10px;cursor:pointer;border-bottom:0.5px solid var(--bt);}
+  .results .it:hover{background:var(--brand-bg);}
+  .results .it:last-child{border-bottom:none;}
+  .chip{display:inline-block;background:var(--brand-bg);color:var(--brand-text);padding:1px 7px;border-radius:8px;font-size:11px;margin-left:4px;}
+  .ownerbox{background:var(--cs);border-radius:8px;padding:10px 12px;margin-top:6px;font-size:13px;}
+  .callitem{border:0.5px solid var(--bt);border-radius:8px;padding:10px 12px;margin-bottom:10px;}
+  .callitem .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;}
+  .callitem .name{font-weight:500;}
+  .callitem .meta{font-size:11px;color:var(--tt);}
+  .cb{font-size:12px;color:var(--ts);margin-top:4px;padding-left:8px;border-left:2px solid var(--bt);}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--tp);color:#fff;padding:9px 16px;border-radius:20px;font-size:13px;opacity:0;transition:opacity .25s;z-index:50;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .signin-center{text-align:center;padding:60px 20px;color:var(--tt);}
+</style>
+</head>
+<body>
+<header>
+  <span class="title">話務記錄</span>
+  <span class="case" id="case-label">清水段</span>
+  <div class="right">
+    <div id="google-signin">
+      <div id="g_id_onload" data-client_id="258934303476-a7he92qcfc7kcccbo317c746ljmodmd0.apps.googleusercontent.com"
+        data-callback="onGoogleSignIn" data-auto_select="true" data-context="signin"></div>
+      <div class="g_id_signin" data-type="standard" data-size="medium" data-theme="outline" data-text="sign_in_with" data-shape="pill"></div>
+    </div>
+    <span id="user-label"></span>
+    <button id="logout-btn" class="btn btn-sm" onclick="doLogout()" style="display:none;">登出</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="login-hint" class="signin-center">請先用公司 Google 帳號登入</div>
+
+  <div id="app" style="display:none;">
+    <!-- 記新來電 -->
+    <div class="card">
+      <h2>記一筆通話</h2>
+      <label>搜尋地主（姓名 / 編號 / 電話）</label>
+      <input type="text" id="owner-search" placeholder="輸入後點選下方地主" autocomplete="off" oninput="renderOwnerResults()">
+      <div id="owner-results" class="results" style="display:none;"></div>
+      <div id="owner-pick" style="display:none;">
+        <div class="ownerbox" id="owner-info"></div>
+        <div class="row">
+          <div><label>通話別</label>
+            <select id="f-type"><option value="來電">來電</option><option value="去電">去電</option></select></div>
+          <div><label>電話</label><input type="tel" id="f-phone" placeholder="電話"></div>
+        </div>
+        <div class="row">
+          <div><label>來電者姓名</label><input type="text" id="f-caller" placeholder="若同地主可留空"></div>
+          <div><label>身分</label><select id="f-agent"><option value="false">本人</option><option value="true">代理人</option></select></div>
+        </div>
+        <label>問題 / 來電事由</label>
+        <textarea id="f-issue" placeholder="例：詢問選屋期間、要求改約看屋…"></textarea>
+        <label>期望回覆 / 後續</label>
+        <textarea id="f-expected" placeholder="例：明天下午回電確認"></textarea>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="submitCall()">儲存通話記錄</button>
+          <button class="btn" onclick="clearPick()">清除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 未結案來電 -->
+    <div class="card">
+      <h2>未結案通話 <span class="muted" id="open-count"></span>
+        <button class="btn btn-sm" style="float:right;" onclick="loadData()">重新整理</button></h2>
+      <div id="open-list"><div class="muted">載入中…</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbz2oTXAMAVHdMBmtk5y3wJQRQ03Rf5y6AbG5K79wRuIpQIihENevTDRADcTnc99CZ4MPg/exec';
+let USER = null;
+let OWNERS = [];
+let CALLS = [];
+let PICKED = null;
+
+function parseJwt(t){ const b=t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'); return JSON.parse(decodeURIComponent(escape(atob(b)))); }
+
+function onGoogleSignIn(resp){
+  const token = resp.credential;
+  let payload; try { payload = parseJwt(token); } catch(e){ toast('登入解析失敗'); return; }
+  USER = { email: payload.email, token };
+  document.getElementById('user-label').textContent = payload.email;
+  document.getElementById('logout-btn').style.display = '';
+  document.getElementById('google-signin').style.display = 'none';
+  document.getElementById('login-hint').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  loadData();
+}
+function doLogout(){
+  USER = null; OWNERS = []; CALLS = []; PICKED = null;
+  document.getElementById('user-label').textContent = '';
+  document.getElementById('logout-btn').style.display = 'none';
+  document.getElementById('google-signin').style.display = '';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-hint').style.display = '';
+}
+
+async function apiGet(action, params={}){
+  const qs = new URLSearchParams({ action, token: USER?.token||'', ...params });
+  const res = await fetch(`${API_URL}?${qs}`);
+  const d = await res.json();
+  if (d.status !== 'ok') throw new Error(d.data?.error || 'API error');
+  return d.data;
+}
+async function apiPost(action, body={}){
+  const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ action, auth:{ token:USER?.token, email:USER?.email }, ...body }) });
+  const d = await res.json();
+  if (d.status !== 'ok') throw new Error(d.data?.error || 'API error');
+  return d.data;
+}
+
+let _t;
+function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(_t); _t=setTimeout(()=>el.classList.remove('show'),1900); }
+
+async function loadData(){
+  try {
+    const [owners, calls] = await Promise.all([apiGet('getOwners'), apiGet('getCallLog')]);
+    OWNERS = owners || [];
+    CALLS = (calls || []).slice().sort((a,b)=> String(b.created_at||'').localeCompare(String(a.created_at||'')));
+    renderOpenCalls();
+  } catch(e){ toast('載入失敗：'+e.message); }
+}
+
+function renderOwnerResults(){
+  const q = document.getElementById('owner-search').value.trim().toLowerCase();
+  const box = document.getElementById('owner-results');
+  if (!q){ box.style.display='none'; box.innerHTML=''; return; }
+  const list = OWNERS.filter(o =>
+    String(o.name||'').toLowerCase().includes(q) ||
+    String(o.serial_no||'').toLowerCase().includes(q) ||
+    String(o.phone||'').toLowerCase().includes(q)
+  ).slice(0, 30);
+  box.style.display = 'block';
+  box.innerHTML = list.length ? list.map(o =>
+    `<div class="it" onclick="pickOwner('${o.owner_id}')"><b>${o.name||''}</b>
+       <span class="muted">編號 ${o.serial_no||''}・${o.phone||'無電話'}</span></div>`).join('')
+    : '<div class="it muted">查無地主</div>';
+}
+
+function pickOwner(oid){
+  const o = OWNERS.find(x => String(x.owner_id) === String(oid));
+  if (!o) return;
+  PICKED = o;
+  document.getElementById('owner-search').value = o.name || '';
+  document.getElementById('owner-results').style.display = 'none';
+  document.getElementById('owner-pick').style.display = '';
+  const agent = (o.has_agent === true || o.has_agent === 'true') ? '<span class="chip">有代理</span>' : '';
+  document.getElementById('owner-info').innerHTML =
+    `<b>${o.name||''}</b> ${agent} <span class="muted">編號 ${o.serial_no||''}・承辦 ${o.handler||'—'}</span>`;
+  document.getElementById('f-phone').value = o.phone || '';
+  // 帶出此地主未結案通話數
+  const myOpen = CALLS.filter(c => String(c.owner_id)===String(oid) && c.status!=='closed').length;
+  if (myOpen) toast(`此地主有 ${myOpen} 筆未結案通話`);
+}
+function clearPick(){
+  PICKED = null;
+  document.getElementById('owner-pick').style.display='none';
+  document.getElementById('owner-search').value='';
+  ['f-caller','f-issue','f-expected','f-phone'].forEach(id=>document.getElementById(id).value='');
+}
+
+async function submitCall(){
+  if (!PICKED){ toast('請先選地主'); return; }
+  const issue = document.getElementById('f-issue').value.trim();
+  if (!issue){ toast('請填問題/事由'); return; }
+  try {
+    await apiPost('addCallLog', {
+      owner_id: PICKED.owner_id, owner_name: PICKED.name || '',
+      caller_name: document.getElementById('f-caller').value.trim(),
+      is_agent: document.getElementById('f-agent').value,
+      call_type: document.getElementById('f-type').value,
+      phone: document.getElementById('f-phone').value.trim(),
+      issue: issue,
+      expected_reply: document.getElementById('f-expected').value.trim(),
+    });
+    toast('已記錄');
+    clearPick();
+    await loadData();
+  } catch(e){ toast('儲存失敗：'+e.message); }
+}
+
+function renderOpenCalls(){
+  const open = CALLS.filter(c => c.status !== 'closed');
+  document.getElementById('open-count').textContent = open.length ? `（${open.length}）` : '（0）';
+  const el = document.getElementById('open-list');
+  if (!open.length){ el.innerHTML = '<div class="muted">目前沒有未結案通話 👍</div>'; return; }
+  el.innerHTML = open.map(c => {
+    const t = String(c.call_time||c.created_at||'').slice(0,16).replace('T',' ');
+    const cbs = (c.callback_log||[]).map(x =>
+      `<div class="cb">${x.time||''} ${x.result||''}${x.note?'：'+x.note:''}</div>`).join('');
+    const caller = c.caller_name ? `${c.caller_name}${(c.is_agent==='true'||c.is_agent===true)?'(代理)':''}` : (c.owner_name||'');
+    return `<div class="callitem">
+      <div class="top"><span class="name">${c.owner_name||''} <span class="muted">${caller&&caller!==c.owner_name?'· '+caller:''}</span></span>
+        <span class="meta">${c.call_type||''}・${t}</span></div>
+      <div style="font-size:13px;margin-top:3px;">${c.issue||''}</div>
+      ${c.expected_reply?`<div class="muted" style="margin-top:2px;">期望：${c.expected_reply}</div>`:''}
+      ${c.phone?`<div class="muted">☎ ${c.phone}</div>`:''}
+      ${cbs}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="note-${c.log_id}" placeholder="回撥備註…" style="flex:1;min-width:140px;padding:6px 8px;font-size:12px;">
+        <button class="btn btn-sm" onclick="doCallback('${c.log_id}','未接')">未接</button>
+        <button class="btn btn-sm btn-green" onclick="doCallback('${c.log_id}','接通')">接通並結案</button>
+        <button class="btn btn-sm" onclick="doClose('${c.log_id}')">直接結案</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function doCallback(logId, result){
+  const note = document.getElementById('note-'+logId)?.value.trim() || '';
+  try { await apiPost('addCallback', { log_id: logId, result, note }); toast(result==='接通'?'已接通並結案':'已記回撥'); await loadData(); }
+  catch(e){ toast('失敗：'+e.message); }
+}
+async function doClose(logId){
+  try { await apiPost('closeCallLog', { log_id: logId }); toast('已結案'); await loadData(); }
+  catch(e){ toast('失敗：'+e.message); }
+}
+</script>
+</body>
+</html>
