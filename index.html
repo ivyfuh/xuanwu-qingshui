@@ -2037,14 +2037,6 @@ async function doExport() {
     const headers = Object.keys(records[0]);
     const aoa = [headers];
 
-    // 先整理每位地主最後一列的 row index（用於填合計找補）
-    // records 已按地主分組，找每個地主最後一列
-    const ownerLastRow = {};  // name+serial → last row index
-    records.forEach((r, i) => {
-      const key = `${r['編號']}_${r['受配人姓名']}`;
-      ownerLastRow[key] = i + 2;  // +2 因為 aoa 有 header 在 row 1
-    });
-
     // 找補欄 index
     const settleIdx = headers.indexOf('找補');
 
@@ -2060,9 +2052,9 @@ async function doExport() {
 
     // 欄寬
     ws['!cols'] = headers.map(h => {
-      const w = { '編號':6, '受配人姓名':10, '應分配權利價值':14, '房屋單元編號':12,
-        '單元價值':12, '房屋權利分子':8, '房屋權利分母':8, '價值小計A':12,
-        '車位單元編號':12, '車位價值':10, '車位權利分子':8, '車位權利分母':8,
+      const w = { '編號':6, '受配人姓名':10, '應分配權利價值':14, '類別':10, '房屋單元編號':12,
+        '單元價值':12, '房屋權利分子':10, '房屋權利分母':10, '價值小計A':12,
+        '車位單元編號':12, '車位價值':10, '車位權利分子':10, '車位權利分母':10,
         '價值小計B':12, '實分配權利價值':14, '找補':14, '備註':20 }[h] || 10;
       return { wch: w };
     });
@@ -2076,7 +2068,7 @@ async function doExport() {
         if (!ws[cellAddr]) ws[cellAddr] = { t:'s', v: val };
         ws[cellAddr].s = {
           font: {
-            color: { rgb: val.startsWith('繳') ? 'CC0000' : '0000CC' },
+            color: { rgb: val.indexOf('補') === 0 ? 'CC0000' : '0000CC' },   // 補繳=紅, 退還=藍
             bold: true
           }
         };
