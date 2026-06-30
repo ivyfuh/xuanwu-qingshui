@@ -1375,6 +1375,7 @@ function previewSelection(ownerId) {
           <div class="flex justify-between mb-4"><span class="text-muted">房屋金額（${units.length} 戶）</span><span>NT$${fmt(houseTotal)}</span></div>
           <div class="flex justify-between mb-4"><span class="text-muted">車位金額（${parks.length} 位）</span><span>NT$${fmt(parkTotal)}</span></div>
           <div class="flex justify-between mb-4" style="border-top:0.5px solid var(--bt);padding-top:5px;"><span class="text-muted">總選配價值</span><span style="font-weight:500;">NT$${fmt(total)}</span></div>
+          <div class="flex justify-between mb-4"><span class="text-muted">應分配價值（100%）</span><span>NT$${fmt(rights)}</span></div>
           <div class="flex justify-between mb-4"><span class="text-muted">選配上限（110%）</span><span>NT$${fmt(limit)}</span></div>
           <div class="flex justify-between mb-4"><span class="text-muted">找補</span>
             <span style="font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
