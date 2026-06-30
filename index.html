@@ -561,14 +561,26 @@ function renderPriceTable() {
 
 async function loadAll() {
   await loadCaseConfig();
-  // 同時發出所有請求，不等待戶別車位（背景載入）
-  await Promise.all([
-    loadOwners(),
-    loadSelections(),
-    loadDocStatus(),
-    preloadUnitParking(),   // ← 新增，背景預載
-    loadMergeData(),        // ← 載入合併組，讓地主明細能算合併投入（#22 雙向同步）
-  ]);
+  // 優先用 bootstrap 一次抓齊（1 次往返/驗證）；失敗則退回原本並行呼叫（Code.gs 未部署也不會壞）
+  let boot = null;
+  try { boot = await apiGet('getBootstrap'); } catch (e) { boot = null; }
+  if (boot && Array.isArray(boot.owners)) {
+    STATE.owners     = boot.owners;
+    STATE.selections = boot.selections || [];
+    MERGE_STATE.usage  = boot.usage  || {};
+    MERGE_STATE.groups = Array.isArray(boot.mergeGroups) ? boot.mergeGroups : [];
+    STATE.docStatus  = boot.docStatus || {};
+    preloadUnitParking();   // 戶別車位背景載入（已快取則秒回）
+  } else {
+    // 後備：與原本相同的並行載入
+    await Promise.all([
+      loadOwners(),
+      loadSelections(),
+      loadDocStatus(),
+      preloadUnitParking(),
+      loadMergeData(),
+    ]);
+  }
   renderOwnerList();
   updateSidebar();
 }
@@ -586,10 +598,15 @@ async function loadMergeData() {
 }
 
 // 該地主在所有合併組的投入金額 + 合併選到的戶別/車位（供明細顯示）
+// 渲染時每列會呼叫多次 → 以 groups 陣列參照為鍵做快取；合併組一更新（重新指派陣列）即自動失效
 function getMergeInfoForOwner(ownerId) {
+  const groups = MERGE_STATE.groups || [];
+  if (MERGE_STATE._miGroupsRef !== groups) { MERGE_STATE._miGroupsRef = groups; MERGE_STATE._miCache = new Map(); }
   const oid = String(ownerId);
+  const cached = MERGE_STATE._miCache && MERGE_STATE._miCache.get(oid);
+  if (cached) return cached;
   let invested = 0; const units = []; const parks = []; const gids = [];
-  (MERGE_STATE.groups || []).forEach(g => {
+  groups.forEach(g => {
     const ids = (g.owner_ids || (g.members||[]).map(m => m.owner_id)).map(String);
     if (!ids.includes(oid)) return;
     const m = (g.members||[]).find(x => String(x.owner_id) === oid);
@@ -598,7 +615,9 @@ function getMergeInfoForOwner(ownerId) {
     (g.parking_nos||[]).forEach(p => parks.push(p));
     gids.push(g.group_id);
   });
-  return { invested, units, parks, gids, inMerge: gids.length > 0 };
+  const result = { invested, units, parks, gids, inMerge: gids.length > 0 };
+  if (MERGE_STATE._miCache) MERGE_STATE._miCache.set(oid, result);
+  return result;
 }
 
 async function loadDocStatus() {
