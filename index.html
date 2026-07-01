@@ -3048,6 +3048,7 @@ function recalcMerge(skipAmountRender) {
   const hasSelection = (units.length + parks.length) > 0;
 
   // 各人找補（正確基準）：（個人選配 ＋ 所有合併投入）− 權利價值(100%)。100%內不補(甚至退)、超過100%才補
+  const overMembers = [];   // 被分到超過自己 110% 上限的成員
   const splitRows = members.map(oid => {
     const u = MERGE_STATE.usage[oid]||{};
     const rights = Number(u.rights_value)||0;
@@ -3059,6 +3060,7 @@ function recalcMerge(skipAmountRender) {
     const totalUsed = personal + otherMerge + thisInvest;                  // 總實際分配價值
     const s = totalUsed - rights;                                          // 找補 = 實際 − 權利價值
     const overPersonal = totalUsed > upper + 1;                            // 超過 110% 上限
+    if (overPersonal) overMembers.push(u.name||oid);
     return `<div class="flex justify-between text-xs" style="padding:3px 0;">
       <span>${u.name||oid}
         <span class="text-muted">（本組投入 ${fmt(thisInvest)}${personal>0?'・個人 '+fmt(personal):''}${otherMerge>0?'・他組 '+fmt(otherMerge):''}）</span>
@@ -3074,6 +3076,7 @@ function recalcMerge(skipAmountRender) {
   if (!hasMembers) problems.push('合併組至少需要 2 人');
   if (!hasSelection) problems.push('請輸入選配戶別或車位');
   if (overLimit) problems.push(`選配總價 NT$${fmt(total)} 超過合併可用上限 NT$${fmt(combinedLimit)}（各人剩餘額度加總，已含110%），不能選`);
+  if (overMembers.length) problems.push(`${overMembers.join('、')} 被分到超過個人 110% 上限，請調整出資金額`);
   // 各人金額加總必須＝選配總價（等同分數加總=1，但用金額講比較直覺）
   if (hasMembers && total > 0 && Math.abs(investDiff) > members.length) {
     problems.push(`各人金額加總 NT$${fmt(investSum)} 與選配總價 NT$${fmt(total)} ${investDiff>0?'還差 NT$'+fmt(investDiff):'超出 NT$'+fmt(-investDiff)}，需分配到剛好相等才能送出`);
@@ -3132,6 +3135,17 @@ async function submitMerge() {
     alert(`各人金額加總 NT$${fmt(investSum)} 與選配總價 NT$${fmt(mergeTotal)} 不相等（差 NT$${fmt(Math.abs(mergeTotal-investSum))}），需分配到剛好相等才能送出`); return;
   }
   if (mergeTotal > combinedLimit2) { alert(`選配總價 NT$${fmt(mergeTotal)} 超過合併可用上限 NT$${fmt(combinedLimit2)}（已含110%），不能送出`); return; }
+  // 任一成員被分到超過自己 110% 上限也要擋
+  const overM = [];
+  ownerIds.forEach(oid => {
+    const u = MERGE_STATE.usage[oid] || {};
+    const upper = Number(u.upper_limit) || Math.round((Number(u.rights_value)||0) * 1.1);
+    const base = (MERGE_STATE.editingBaseInvest && MERGE_STATE.editingBaseInvest[oid]) || 0;
+    const otherMerge = Math.max(0, (Number(u.merge_invested)||0) - base);
+    const totalUsed = (Number(u.personal_used)||0) + otherMerge + (MERGE_STATE.invest[oid]||0);
+    if (totalUsed > upper + 1) overM.push(u.name||oid);
+  });
+  if (overM.length) { alert(`${overM.join('、')} 被分到超過個人 110% 上限，請調整出資金額後再送出`); return; }
 
   MERGE_STATE.submitting = true;
   const btn = document.getElementById('merge-submit-btn');
