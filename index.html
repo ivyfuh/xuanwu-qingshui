@@ -1576,6 +1576,31 @@ async function submitSelection(ownerId, status) {
   const address = document.getElementById('sel-address')?.value || '';
   const idnum   = document.getElementById('sel-idnum')?.value.trim() || '';
   const btn = document.querySelector('#modal-box .btn-primary, #modal-box .btn-success');
+  // ── 沒有個人選配（例如已在合併組選配）：只更新聯絡資料，不建立空選配 ──
+  if (units.length === 0 && parks.length === 0) {
+    const mInfo = (typeof getMergeInfoForOwner === 'function') ? getMergeInfoForOwner(ownerId) : { inMerge:false };
+    if (!mInfo.inMerge && !confirm('沒有填任何戶別／車位。\n將只更新聯絡資料（電話／地址／身分證），不會建立選配。\n確定？')) { btnReset(btn); return; }
+    btnLoading(btn, '儲存中…');
+    try {
+      const owner = STATE.owners.find(o => o.owner_id == ownerId);
+      const newPhone   = phone   || owner?.phone   || '';
+      const newAddress = address || owner?.address || '';
+      await apiPost('saveOwner', {
+        owner_id: ownerId, name: owner?.name || '',
+        phone: newPhone, address: newAddress,
+        ...(idnum ? { id_number: idnum } : {}),
+        rights_value: owner?.rights_value || 0, handler: owner?.handler || '',
+        participate: 'true', has_agent: owner?.has_agent || 'false', agent_name: owner?.agent_name || '',
+      });
+      if (owner) { owner.phone = newPhone; owner.address = newAddress; owner.participate = 'true'; }
+      closeModal();
+      await reloadCore();
+      renderOwnerList();
+      renderOwnerDetail(ownerId);
+      alert(mInfo.inMerge ? '已更新聯絡資料（此地主由合併選配，無個人選配）' : '已更新聯絡資料');
+    } catch(e) { btnReset(btn); alert('儲存失敗：' + e.message); }
+    return;
+  }
   // ── 前端雙重擋關 ──
   // 1. 一戶一車：車位數不得超過戶別數
   if (parks.length > units.length) {
