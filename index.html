@@ -376,6 +376,7 @@ const DOC_TYPES = [
   { key: '防災都更同意書', needAgent: false, selectOnly: false },
   { key: '意願調查表',     needAgent: false, selectOnly: false },
   { key: '選配申請書',     needAgent: false, selectOnly: true  },
+  { key: '合併申請書',     needAgent: false, selectOnly: false, mergeOnly: true },
   { key: '本人證件',       needAgent: false, selectOnly: false },
   { key: '代理人證件',     needAgent: true,  selectOnly: false },
   { key: '授權書',         needAgent: true,  selectOnly: false },
@@ -390,6 +391,7 @@ function requiredDocsFor(owner) {
   const hasSel      = !!getSelForOwner(owner?.owner_id) || inMerge;
   return DOC_TYPES.filter(dt => {
     if (dt.needAgent && !hasAgent) return false;
+    if (dt.mergeOnly && !inMerge) return false;      // 合併申請書：只有參與合併的地主才需要
     if (dt.selectOnly && !participate) return false;
     // 未選屋的地主只顯示非選配申請書的文件（同意書等可提前收）
     if (dt.selectOnly && !hasSel) return false;
