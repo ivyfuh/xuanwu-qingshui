@@ -690,7 +690,7 @@ async function loadAnnouncements() {
           color:${s.text};background:var(--cp);padding:2px 8px;border-radius:8px;">
           <i class="ti ${s.icon}" style="font-size:12px;"></i> ${s.label}
         </span>
-        <span style="font-size:13px;font-weight:500;color:var(--tp);">${a.title||''}</span>
+        <span style="font-size:14px;font-weight:600;color:${s.text};">${a.title||''}</span>
         ${a.date?`<span style="margin-left:auto;font-size:11px;color:var(--tt);">${a.date}</span>`:''}
       </div>
       ${a.content?`<div class="text-sm" style="color:var(--ts);line-height:1.6;padding-left:2px;white-space:pre-wrap;">${a.content}</div>`:''}
