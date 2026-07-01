@@ -385,7 +385,9 @@ const DOC_TYPES = [
 function requiredDocsFor(owner) {
   const hasAgent    = owner && (owner.has_agent === true || owner.has_agent === 'true');
   const participate = !owner || (owner.participate !== false && owner.participate !== 'false');
-  const hasSel      = !!getSelForOwner(owner?.owner_id);
+  // 已選屋 = 有個人選配 或 有參與合併選配（合併也要收選配申請書）
+  const inMerge     = (typeof getMergeInfoForOwner === 'function') && getMergeInfoForOwner(owner?.owner_id).inMerge;
+  const hasSel      = !!getSelForOwner(owner?.owner_id) || inMerge;
   return DOC_TYPES.filter(dt => {
     if (dt.needAgent && !hasAgent) return false;
     if (dt.selectOnly && !participate) return false;
