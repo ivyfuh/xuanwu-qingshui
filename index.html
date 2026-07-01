@@ -559,9 +559,8 @@ function renderPriceTable() {
       <tbody>${pRows}</tbody></table>`;
 }
 
-async function loadAll() {
-  await loadCaseConfig();
-  // 優先用 bootstrap 一次抓齊（1 次往返/驗證）；失敗則退回原本並行呼叫（Code.gs 未部署也不會壞）
+// 一次抓齊核心資料（owners/selections/usage/merge/docs）＝1 次往返/驗證；失敗退回並行載入
+async function reloadCore() {
   let boot = null;
   try { boot = await apiGet('getBootstrap'); } catch (e) { boot = null; }
   if (boot && Array.isArray(boot.owners)) {
@@ -570,17 +569,15 @@ async function loadAll() {
     MERGE_STATE.usage  = boot.usage  || {};
     MERGE_STATE.groups = Array.isArray(boot.mergeGroups) ? boot.mergeGroups : [];
     STATE.docStatus  = boot.docStatus || {};
-    preloadUnitParking();   // 戶別車位背景載入（已快取則秒回）
   } else {
-    // 後備：與原本相同的並行載入
-    await Promise.all([
-      loadOwners(),
-      loadSelections(),
-      loadDocStatus(),
-      preloadUnitParking(),
-      loadMergeData(),
-    ]);
+    await Promise.all([loadOwners(), loadSelections(), loadDocStatus(), loadMergeData()]);
   }
+}
+
+async function loadAll() {
+  await loadCaseConfig();
+  preloadUnitParking();     // 戶別車位背景載入（已快取則秒回），不擋主資料
+  await reloadCore();
   renderOwnerList();
   updateSidebar();
 }
@@ -1638,7 +1635,7 @@ async function submitSelection(ownerId, status) {
       status, form_date: date, change_reason: reason,
     });
     closeModal();
-    await Promise.all([loadOwners(), loadSelections()]);
+    await reloadCore();
     renderOwnerList();
     renderOwnerDetail(ownerId);
     // #9：送單後不再跳重複提醒（打字當下 previewCodes 已即時標示，避免提示兩次）
@@ -2118,7 +2115,7 @@ async function refreshData(force, btn) {
   let orig;
   if (btn) { orig = btn.innerHTML; btn.disabled = true; btn.style.opacity = '0.7'; btn.innerHTML = '<i class="ti ti-loader-2"></i> 重新整理中…'; }
   try {
-    await Promise.all([loadOwners(), loadSelections(), loadDocStatus(), loadMergeData()]);
+    await reloadCore();
     const v = STATE.view || 'list';
     if (v === 'list') renderOwnerList();
     else if (v === 'lottery') loadDashboard();
