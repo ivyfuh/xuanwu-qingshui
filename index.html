@@ -3373,6 +3373,11 @@ function renderDashboard(unitMap, parkMap) {
     (Array.isArray(s.unit_nos) ? s.unit_nos : JSON.parse(s.unit_nos||'[]')).forEach(u => selectedUnits.add(u));
     (Array.isArray(s.parking_nos) ? s.parking_nos : JSON.parse(s.parking_nos||'[]')).forEach(p => selectedParks.add(p));
   });
+  // 合併選配的戶別/車位也算「已選」（存在 merge_groups，不在 selections）
+  (MERGE_STATE.groups || []).forEach(g => {
+    (Array.isArray(g.unit_nos) ? g.unit_nos : []).forEach(u => selectedUnits.add(u));
+    (Array.isArray(g.parking_nos) ? g.parking_nos : []).forEach(p => selectedParks.add(p));
+  });
 
   const totalUnits   = Object.keys(unitMap).filter(k => !k.includes('-S')).length; // 排除店面
   const totalParks   = Object.keys(parkMap).length;
@@ -3380,7 +3385,8 @@ function renderDashboard(unitMap, parkMap) {
   const remParks     = totalParks - selectedParks.size;
   const selOwners    = participating.filter(o => {
     const s = getSelForOwner(o.owner_id);
-    return s && s.status !== 'deleted';
+    if (s && s.status !== 'deleted') return true;
+    return getMergeInfoForOwner(o.owner_id).inMerge;   // 合併選配也算已選屋
   }).length;
 
   // 選屋率（分母為「參與選配」人數，不含不參與權變者）
