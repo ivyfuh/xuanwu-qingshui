@@ -962,6 +962,9 @@ async function doVerify() {
     const dupU = res.dup_units || [];
     const dupP = res.dup_parks || [];
     const hasDup = dupU.length || dupP.length;
+    const merges = res.merge || [];
+    const hasMerge = merges.length > 0;
+    const mergeValue = merges.reduce((s, g) => s + (Number(g.value) || 0), 0);
 
     el.innerHTML = `<div style="background:var(--cp);border:1.5px solid #9FE1CB;border-radius:var(--rl);padding:16px;margin-top:10px;">
       <div class="flex items-center gap-8 mb-12">
@@ -980,19 +983,30 @@ async function doVerify() {
           <div class="text-xs text-muted mb-4">選配上限</div>
           <div style="font-size:14px;font-weight:500;">NT$${fmt(res.upper_limit)}</div>
         </div>
-        <div style="background:${settle>0?'var(--red-bg)':settle<0?'var(--green-bg)':'var(--cs)'};border-radius:var(--rm);padding:10px 12px;">
-          <div class="text-xs mb-4" style="color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">找補試算</div>
-          <div style="font-size:14px;font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
-            ${settle>0?'需補差 NT$'+fmt(settle):settle<0?'退款 NT$'+fmt(-settle):'無需找補'}
-          </div>
-        </div>
+        ${(!sel && hasMerge)
+          ? `<div style="background:var(--cs);border-radius:var(--rm);padding:10px 12px;">
+               <div class="text-xs text-muted mb-4">合併分配價值</div>
+               <div style="font-size:14px;font-weight:500;">NT$${fmt(mergeValue)}</div>
+             </div>`
+          : `<div style="background:${settle>0?'var(--red-bg)':settle<0?'var(--green-bg)':'var(--cs)'};border-radius:var(--rm);padding:10px 12px;">
+               <div class="text-xs mb-4" style="color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">找補試算</div>
+               <div style="font-size:14px;font-weight:500;color:${settle>0?'var(--red-text)':settle<0?'var(--green-text)':'var(--tt)'};">
+                 ${settle>0?'需補差 NT$'+fmt(settle):settle<0?'退款 NT$'+fmt(-settle):'無需找補'}
+               </div>
+             </div>`}
       </div>
       ${units.length||parks.length ? `<div class="text-xs text-muted mb-4">已登記選配</div>
         ${units.map(u=>{const d=dupU.indexOf(u)>=0;return `<div class="text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);${d?'color:var(--red-text);font-weight:500;':''}">🏠 ${u}${d?' ⚠ 與他人重複，需抽籤':''}</div>`;}).join('')}
         ${parks.map(p=>{const d=dupP.indexOf(p)>=0;return `<div class="text-sm" style="padding:4px 0;border-bottom:0.5px solid var(--bt);${d?'color:var(--red-text);font-weight:500;':''}">🚗 ${p}${d?' ⚠ 與他人重複，需抽籤':''}</div>`;}).join('')}` : ''}
+      ${hasMerge ? `<div class="text-xs text-muted mb-4" style="margin-top:12px;">合併選配</div>
+        ${merges.map(g => `<div style="background:var(--cs);border-radius:var(--rm);padding:8px 12px;margin-bottom:6px;">
+          <div class="text-xs text-muted mb-4">與其他 ${Math.max(0,(g.member_count||1)-1)} 人合併・您的持分 ${g.num}/${g.den}・本組分配價值 NT$${fmt(g.value)}</div>
+          ${(g.units||[]).map(u=>`<div class="text-sm" style="padding:3px 0;">🏠 ${u}</div>`).join('')}
+          ${(g.parks||[]).map(p=>`<div class="text-sm" style="padding:3px 0;">🚗 ${p}</div>`).join('')}
+        </div>`).join('')}` : ''}
       ${hasDup ? `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">
         <i class="ti ti-alert-circle"></i> 您選的${dupU.length?` ${dupU.join('、')}（戶別）`:''}${dupP.length?` ${dupP.join('、')}（車位）`:''} 與其他地主重複，將以公開抽籤決定最終分配，請持續關注公告。</div>` : ''}
-      ${status === 'none' ? `<div style="background:var(--orange-bg);color:var(--orange-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">
+      ${status === 'none' && !hasMerge ? `<div style="background:var(--orange-bg);color:var(--orange-text);padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">
         您尚未完成選配，請聯絡漢皇建設辦理選配作業。</div>` : ''}
       ${status === 'needs_reselect' ? `<div style="background:#E8EDF0;color:#3D4D56;padding:8px 10px;border-radius:var(--rm);font-size:12px;margin-top:10px;">
         您的選配因重複抽籤結果須重新選配，請盡速與負責同仁聯絡。</div>` : ''}
