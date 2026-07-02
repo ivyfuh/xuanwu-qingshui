@@ -775,6 +775,35 @@ function renderGrid() {
     html += `</div>`;
   });
 
+  // 一樓店面 S1~S9（無 S4）：只在 A 棟顯示，排在 2F 下方（動態抓所有 1F-S*）
+  if (STATE.tower === 'A') {
+    const shopUnits = Object.keys(STATE.unitMap || {})
+      .filter(k => /^1F-S/i.test(k))
+      .sort((a, b) => (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0));
+    if (shopUnits.length) {
+      html += `<div style="height:6px;"></div>`;
+      // 店面代號表頭
+      html += `<div style="display:flex;gap:1px;padding-left:36px;margin-bottom:4px;">`;
+      shopUnits.forEach(key => { html += `<div style="width:44px;font-size:9.5px;text-align:center;color:var(--tt);font-weight:500;">${key.replace('1F-', '')}</div>`; });
+      html += `</div>`;
+      // 店面列
+      html += `<div style="display:flex;align-items:center;gap:1px;margin-bottom:2px;">`;
+      html += `<div style="width:34px;font-size:10px;color:var(--tt);text-align:right;padding-right:4px;">1F</div>`;
+      shopUnits.forEach(key => {
+        const cnt = STATE.unitStatus[key] || 0;
+        if (cnt === 0) {
+          html += `<div class="floor-cell fc-empty" title="${key}：尚未選配" onclick="showUnit('${key}')"></div>`;
+        } else if (cnt === 1) {
+          html += `<div class="floor-cell fc-sel" title="${key}：已選配" onclick="showUnit('${key}')"><i class="ti ti-check" style="font-size:11px;"></i></div>`;
+        } else {
+          html += `<div class="floor-cell fc-dup" title="${key}：重複 ${cnt} 人" onclick="showUnit('${key}')">${cnt}人</div>`;
+        }
+      });
+      html += `</div>`;
+      html += `<div style="padding-left:36px;font-size:9px;color:var(--tt);margin-top:2px;">↑ 一樓店面</div>`;
+    }
+  }
+
   area.innerHTML = html;
   renderDupNotices('unit');
 }
