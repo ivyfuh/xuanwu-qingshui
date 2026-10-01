@@ -359,7 +359,20 @@ body { background: var(--ct); }
   <!-- Timeline（五階段，由後台案件設定驅動） -->
   <div class="timeline" id="timeline"></div>
 
+  <!-- 暫停開放卡片（後台「地主查閱頁・開放狀態」關閉時顯示） -->
+  <div id="public-closed-area" class="card mb-16" style="display:none;text-align:center;padding:36px 20px;">
+    <div style="width:56px;height:56px;border-radius:50%;background:var(--cs);margin:0 auto 14px;
+      display:flex;align-items:center;justify-content:center;">
+      <i class="ti ti-lock" style="font-size:26px;color:var(--brand-text);"></i>
+    </div>
+    <div style="font-size:18px;font-weight:600;color:var(--tp);margin-bottom:10px;">選屋資訊查詢暫停開放中</div>
+    <div id="public-closed-msg" style="font-size:14px;color:var(--ts);line-height:1.8;max-width:520px;margin:0 auto;white-space:pre-line;"></div>
+    <div id="public-reopen" style="display:none;margin-top:14px;font-size:13px;color:var(--brand-text);">
+      <i class="ti ti-calendar"></i> 預計重新開放：<b id="public-reopen-date"></b>
+    </div>
+  </div>
 
+  <div id="public-open-area">
   <!-- Selection grid + panel -->
   <div class="card mb-16" style="padding:0;overflow:hidden;">
     <div style="padding:14px 16px;border-bottom:0.5px solid var(--bt);">
@@ -413,6 +426,7 @@ body { background: var(--ct); }
     </div>
     <div id="verify-result"></div>
   </div>
+  </div><!-- /public-open-area -->
 
   <!-- Branded footer -->
   <div style="border-top:0.5px solid var(--bt);margin-top:24px;padding:24px 0;text-align:center;">
@@ -451,6 +465,7 @@ let STATE = {
 window.onload = async function() {
   await loadConfig();
   renderTimeline();   // 確保即使 getCase 失敗也以預設五階段顯示
+  if (isPublicClosed()) { document.getElementById('update-time').textContent = '更新：' + new Date().toLocaleString('zh-TW'); return; }
   await Promise.all([loadStatus(), loadUnitData(), loadParkingData()]);
   renderGrid();
   renderStats();
@@ -465,9 +480,11 @@ async function reloadPublic() {
   try {
     await loadConfig();
     renderTimeline();
-    await Promise.all([loadStatus(), loadUnitData(), loadParkingData()]);
-    renderGrid();
-    renderStats();
+    if (!isPublicClosed()) {
+      await Promise.all([loadStatus(), loadUnitData(), loadParkingData()]);
+      renderGrid();
+      renderStats();
+    }
     document.getElementById('update-time').textContent = '更新：' + new Date().toLocaleString('zh-TW');
     // 清除已輸入的查詢資料 + 查詢結果，回到起始頁面
     const vn = document.getElementById('v-name'); if (vn) vn.value = '';
@@ -584,6 +601,28 @@ function startCountdown(endDate, startDate) {
   _cdTimer = setInterval(tick, 1000);
 }
 
+// 地主查閱頁開關（後台案件設定控制）：關閉時隱藏選屋狀態圖、身分查詢與倒數，只留公告與進度條
+const DEFAULT_CLOSED_MSG = '本平台目前暫停開放查詢。\n如需了解您的選配情形，請與漢皇建設負責同仁聯繫。';
+function isPublicClosed() {
+  const v = STATE.cfg && STATE.cfg.public_enabled;
+  return v === false || String(v).toLowerCase() === 'false';
+}
+function applyPublicGate(cfg) {
+  const closed = isPublicClosed();
+  document.getElementById('public-open-area').style.display = closed ? 'none' : '';
+  document.getElementById('public-closed-area').style.display = closed ? '' : 'none';
+  const cbd = document.getElementById('countdown-badge'); if (cbd) cbd.style.display = closed ? 'none' : '';
+  if (!closed) return;
+  if (_cdTimer) { clearInterval(_cdTimer); _cdTimer = null; }
+  const banner = document.getElementById('countdown-banner'); if (banner) banner.style.display = 'none';
+  const sb = document.getElementById('status-badge');
+  if (sb) { sb.innerHTML = '<i class="ti ti-lock"></i> 暫停開放查詢'; sb.style.background = 'rgba(255,255,255,.18)'; sb.style.color = '#fff'; }
+  document.getElementById('public-closed-msg').textContent = (cfg.public_closed_msg || '').trim() || DEFAULT_CLOSED_MSG;
+  const rd = (cfg.public_reopen_date || '').trim();
+  document.getElementById('public-reopen').style.display = rd ? '' : 'none';
+  document.getElementById('public-reopen-date').textContent = rd;
+}
+
 async function loadConfig() {
   const cfg = await apiGet('getCase');
   if (!cfg) return;
@@ -620,6 +659,7 @@ async function loadConfig() {
     if (sb) sb.innerHTML = '<i class="ti ti-clock"></i> 選屋籌備中';
   }
   renderTimeline();
+  applyPublicGate(cfg);
   // 多則公告
   loadAnnouncements();
 }

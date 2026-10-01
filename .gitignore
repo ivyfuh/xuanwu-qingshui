@@ -1,0 +1,4 @@
+﻿# 後端程式含密碼與試算表ID，不可推到公開repo
+apps_script/
+.claude/
+

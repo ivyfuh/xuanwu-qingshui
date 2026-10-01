@@ -2195,7 +2195,36 @@ function renderSettings() {
     </div>`;
   }).join('');
 
+  const pubOpen = cfg.public_enabled !== false;
+  const escH = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   el.innerHTML = `
+    <div style="margin-bottom:22px;padding-bottom:18px;border-bottom:0.5px solid var(--bt);">
+      <div class="flex items-center gap-8" style="margin-bottom:4px;">
+        <div style="font-size:14px;font-weight:500;">地主查閱頁・開放狀態</div>
+        <span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:8px;
+          background:${pubOpen ? 'var(--green-bg)' : 'var(--red-bg)'};color:${pubOpen ? 'var(--green-text)' : 'var(--red-text)'};">
+          ${pubOpen ? '● 開放中' : '● 已關閉'}</span>
+        <a href="https://ivyfuh.github.io/xuanwu-qingshui/public.html" target="_blank" class="text-xs" style="margin-left:auto;color:var(--brand-text);">
+          <i class="ti ti-external-link"></i> 看地主頁</a>
+      </div>
+      <div class="text-xs text-muted" style="margin-bottom:12px;line-height:1.6;">
+        關閉時，地主頁只保留公告與進度條，<b>隱藏選屋狀態圖與身分查詢</b>，改顯示下方說明（後端同步拒絕查詢，約 20 秒內生效）。
+      </div>
+      <div class="flex gap-8" style="margin-bottom:10px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="radio" name="pub-open" value="true" ${pubOpen ? 'checked' : ''}> 開放查詢</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-left:16px;">
+          <input type="radio" name="pub-open" value="false" ${pubOpen ? '' : 'checked'}> 暫停開放</label>
+      </div>
+      <div class="text-xs text-muted" style="margin-bottom:4px;">暫停時顯示的說明（可留空用預設文字）</div>
+      <textarea id="pub-closed-msg" rows="3" style="width:100%;box-sizing:border-box;margin-bottom:8px;"
+        placeholder="例：抽籤作業進行中，結果確認後將重新開放查詢。如需了解選配情形，請洽漢皇建設 服務專線 02-XXXX-XXXX">${escH(cfg.public_closed_msg)}</textarea>
+      <div class="text-xs text-muted" style="margin-bottom:4px;">預計重新開放日期（選填，自由文字）</div>
+      <input type="text" id="pub-reopen-date" value="${escH(cfg.public_reopen_date)}" placeholder="例：115/11/15" style="width:220px;margin-bottom:10px;">
+      <div id="pub-msg" style="margin-bottom:8px;"></div>
+      <button class="btn-primary" id="pub-save-btn" onclick="savePublicAccess()"><i class="ti ti-device-floppy"></i> 儲存開放設定</button>
+    </div>
+
     <div style="font-size:14px;font-weight:500;margin-bottom:4px;">地主顯示頁・五階段進度</div>
     <div class="text-xs text-muted" style="margin-bottom:16px;">這裡設定的日期與狀態會即時顯示在地主查閱頁（public）最上方的進度條。日期為自由文字（民國年），狀態三選一。</div>
     <div style="display:grid;grid-template-columns:104px 1fr 150px;gap:10px;margin-bottom:6px;font-size:11px;color:var(--tt);">
@@ -2242,6 +2271,28 @@ async function doClearDocs() {
     alert(`✅ 已清空收件記錄 ${r.docCleared||0} 筆。`);
     location.reload();
   } catch(e) { alert('失敗：' + e.message); }
+}
+
+async function savePublicAccess() {
+  const enabled  = document.querySelector('input[name="pub-open"]:checked')?.value === 'true';
+  const closed_msg  = document.getElementById('pub-closed-msg')?.value.trim() || '';
+  const reopen_date = document.getElementById('pub-reopen-date')?.value.trim() || '';
+  const wasOpen = (STATE.caseConfig || {}).public_enabled !== false;
+  if (wasOpen && !enabled && !confirm('確定要「暫停開放」地主查閱頁？\n地主將無法查詢個人選配與選屋狀態圖。')) return;
+  if (!wasOpen && enabled && !confirm('確定要「重新開放」地主查閱頁？\n地主將可再查詢個人選配與選屋狀態圖。')) return;
+  const btn = document.getElementById('pub-save-btn');
+  const msg = document.getElementById('pub-msg');
+  if (btn) { btn.disabled = true; btn.textContent = '儲存中…'; }
+  try {
+    await apiPost('setPublicAccess', { enabled, closed_msg, reopen_date });
+    STATE.caseConfig = { ...(STATE.caseConfig || {}), public_enabled: enabled, public_closed_msg: closed_msg, public_reopen_date: reopen_date };
+    renderSettings();
+    const m = document.getElementById('pub-msg');
+    if (m) m.innerHTML = `<div style="background:var(--green-bg);color:var(--green-text);padding:8px 12px;border-radius:6px;font-size:12px;">已儲存：地主查閱頁目前為「${enabled ? '開放中' : '暫停開放'}」。</div>`;
+  } catch(e) {
+    if (msg) msg.innerHTML = `<div style="background:var(--red-bg);color:var(--red-text);padding:8px 12px;border-radius:6px;font-size:12px;">儲存失敗：${e.message}${e.message === 'Unknown action' ? '（後端 Code.gs 尚未部署新版）' : ''}</div>`;
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-device-floppy"></i> 儲存開放設定'; }
+  }
 }
 
 async function saveStages() {
