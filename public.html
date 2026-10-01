@@ -279,6 +279,20 @@ body { background: var(--ct); }
 </head>
 <body>
 
+<!-- 暫停開放：整頁只留 #public-closed-area -->
+<style>
+  body.pub-closed #test-banner,
+  body.pub-closed .page-header,
+  body.pub-closed .container > *:not(#public-closed-area) { display:none !important; }
+  body.pub-closed #public-closed-area {
+    display:flex !important; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; min-height:calc(100vh - 40px); padding:40px 8px;
+  }
+  #staff-banner { display:none; position:sticky; top:0; z-index:50; background:#FFF4D6; color:#7A5300;
+    border-bottom:1px solid #F0C36D; padding:8px 16px; font-size:13px; text-align:center; }
+</style>
+<div id="staff-banner"></div>
+
 <!-- Test banner -->
 <div id="test-banner">
   ⚠️ 測試頁面 — 資料僅供測試，非正式選屋結果
@@ -359,16 +373,26 @@ body { background: var(--ct); }
   <!-- Timeline（五階段，由後台案件設定驅動） -->
   <div class="timeline" id="timeline"></div>
 
-  <!-- 暫停開放卡片（後台「地主查閱頁・開放狀態」關閉時顯示） -->
-  <div id="public-closed-area" class="card mb-16" style="display:none;text-align:center;padding:36px 20px;">
-    <div style="width:56px;height:56px;border-radius:50%;background:var(--cs);margin:0 auto 14px;
-      display:flex;align-items:center;justify-content:center;">
-      <i class="ti ti-lock" style="font-size:26px;color:var(--brand-text);"></i>
+  <!-- 暫停開放畫面（後台「地主查閱頁・開放狀態」暫停時，整頁只剩這塊） -->
+  <div id="public-closed-area" style="display:none;">
+    <img id="closed-logo" alt="漢皇集團" style="height:72px;width:auto;margin-bottom:28px;">
+    <div style="font-size:18px;font-weight:500;color:var(--tp);line-height:1.9;max-width:460px;">
+      本平台目前暫停開放查詢。<br>如需了解您的選配情形，請與我們聯繫。
     </div>
-    <div style="font-size:18px;font-weight:600;color:var(--tp);margin-bottom:10px;">選屋資訊查詢暫停開放中</div>
-    <div id="public-closed-msg" style="font-size:14px;color:var(--ts);line-height:1.8;max-width:520px;margin:0 auto;white-space:pre-line;"></div>
-    <div id="public-reopen" style="display:none;margin-top:14px;font-size:13px;color:var(--brand-text);">
-      <i class="ti ti-calendar"></i> 預計重新開放：<b id="public-reopen-date"></b>
+    <div id="public-closed-msg" style="display:none;font-size:14px;color:var(--ts);line-height:1.8;max-width:460px;margin-top:12px;white-space:pre-line;"></div>
+    <div id="public-reopen" style="display:none;margin-top:12px;font-size:14px;color:var(--ts);">
+      預計重新開放：<b id="public-reopen-date"></b>
+    </div>
+    <a id="closed-phone" href="#" style="display:inline-flex;align-items:center;gap:8px;margin-top:26px;
+      font-size:22px;font-weight:600;color:var(--brand-text);text-decoration:none;
+      border:1px solid var(--brand);border-radius:999px;padding:10px 26px;">
+      <i class="ti ti-phone"></i><span id="closed-phone-text"></span>
+    </a>
+    <div style="margin-top:10px;font-size:12px;color:var(--tt);">漢皇集團　HANHUANG GROUP</div>
+    <div id="staff-login" style="display:none;margin-top:36px;padding-top:18px;border-top:0.5px solid var(--bt);">
+      <div style="font-size:12px;color:var(--tt);margin-bottom:8px;">內部同仁請以公司 Google 帳號登入預覽</div>
+      <div id="staff-login-btn"></div>
+      <div id="staff-login-msg" style="font-size:12px;color:var(--red-text);margin-top:6px;"></div>
     </div>
   </div>
 
@@ -465,7 +489,7 @@ let STATE = {
 window.onload = async function() {
   await loadConfig();
   renderTimeline();   // 確保即使 getCase 失敗也以預設五階段顯示
-  if (isPublicClosed()) { document.getElementById('update-time').textContent = '更新：' + new Date().toLocaleString('zh-TW'); return; }
+  if (isBlocked()) return;
   await Promise.all([loadStatus(), loadUnitData(), loadParkingData()]);
   renderGrid();
   renderStats();
@@ -480,7 +504,7 @@ async function reloadPublic() {
   try {
     await loadConfig();
     renderTimeline();
-    if (!isPublicClosed()) {
+    if (!isBlocked()) {
       await Promise.all([loadStatus(), loadUnitData(), loadParkingData()]);
       renderGrid();
       renderStats();
@@ -499,6 +523,8 @@ async function reloadPublic() {
 }
 
 async function apiGet(action, params={}, retries=2) {
+  // 暫停期間內部人員：查詢狀態/身分時帶公司帳號 token，後端驗證通過才放行
+  if (STAFF && (action === 'publicStatus' || action === 'verifyOwner')) params = { ...params, token: STAFF.token };
   const qs = new URLSearchParams({ action, ...params });
   for (let attempt = 0; ; attempt++) {
     try {
@@ -601,26 +627,85 @@ function startCountdown(endDate, startDate) {
   _cdTimer = setInterval(tick, 1000);
 }
 
-// 地主查閱頁開關（後台案件設定控制）：關閉時隱藏選屋狀態圖、身分查詢與倒數，只留公告與進度條
-const DEFAULT_CLOSED_MSG = '本平台目前暫停開放查詢。\n如需了解您的選配情形，請與漢皇建設負責同仁聯繫。';
+// ============================================================
+//  地主查閱頁開關（後台案件設定控制）
+//  暫停時整頁只顯示 Logo＋暫停文字＋聯絡電話；內部同仁以公司 Google 帳號登入（?staff=1）可看完整內容
+// ============================================================
+const CLIENT_ID = '258934303476-a7he92qcfc7kcccbo317c746ljmodmd0.apps.googleusercontent.com';
+const STAFF_DOMAIN = 'hanhuang.com.tw';
+const DEFAULT_PHONE = '02-2242-1200';
+const STAFF_PARAM = new URLSearchParams(location.search).has('staff');
+let STAFF = (function () {   // { email, token, exp }；只存在這個分頁（sessionStorage），token 約 1 小時到期
+  try {
+    const s = JSON.parse(sessionStorage.getItem('xw_staff') || 'null');
+    if (s && s.token && s.exp * 1000 > Date.now() + 60000) return s;
+    sessionStorage.removeItem('xw_staff');
+  } catch (e) {}
+  return null;
+})();
+
 function isPublicClosed() {
   const v = STATE.cfg && STATE.cfg.public_enabled;
   return v === false || String(v).toLowerCase() === 'false';
 }
+// 地主實際上被擋（暫停中且不是內部人員）
+function isBlocked() { return isPublicClosed() && !STAFF; }
+
 function applyPublicGate(cfg) {
   const closed = isPublicClosed();
-  document.getElementById('public-open-area').style.display = closed ? 'none' : '';
-  document.getElementById('public-closed-area').style.display = closed ? '' : 'none';
-  const cbd = document.getElementById('countdown-badge'); if (cbd) cbd.style.display = closed ? 'none' : '';
-  if (!closed) return;
+  const blocked = isBlocked();
+  document.body.classList.toggle('pub-closed', blocked);
+  const sbn = document.getElementById('staff-banner');
+  if (closed && STAFF) {
+    sbn.style.display = 'block';
+    sbn.innerHTML = `<i class="ti ti-eye"></i> 內部預覽（${STAFF.email}）— 地主目前看到的是「暫停開放」畫面`;
+  } else {
+    sbn.style.display = 'none';
+  }
+  if (!blocked) return;
   if (_cdTimer) { clearInterval(_cdTimer); _cdTimer = null; }
-  const banner = document.getElementById('countdown-banner'); if (banner) banner.style.display = 'none';
-  const sb = document.getElementById('status-badge');
-  if (sb) { sb.innerHTML = '<i class="ti ti-lock"></i> 暫停開放查詢'; sb.style.background = 'rgba(255,255,255,.18)'; sb.style.color = '#fff'; }
-  document.getElementById('public-closed-msg').textContent = (cfg.public_closed_msg || '').trim() || DEFAULT_CLOSED_MSG;
+  const logo = document.querySelector('.page-header img');
+  if (logo) document.getElementById('closed-logo').src = logo.src;
+  const msg = (cfg.public_closed_msg || '').trim();
+  const msgEl = document.getElementById('public-closed-msg');
+  msgEl.style.display = msg ? '' : 'none';
+  msgEl.textContent = msg;
   const rd = (cfg.public_reopen_date || '').trim();
   document.getElementById('public-reopen').style.display = rd ? '' : 'none';
   document.getElementById('public-reopen-date').textContent = rd;
+  const phone = (cfg.public_contact_phone || '').trim() || DEFAULT_PHONE;
+  document.getElementById('closed-phone-text').textContent = phone;
+  document.getElementById('closed-phone').href = 'tel:' + phone.replace(/[^\d+#]/g, '');
+  if (STAFF_PARAM) showStaffLogin();
+}
+
+// 內部人員登入（只有網址帶 ?staff=1 才載入 Google 登入，地主不會看到）
+function showStaffLogin() {
+  document.getElementById('staff-login').style.display = '';
+  const init = () => {
+    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onStaffSignIn, auto_select: true });
+    google.accounts.id.renderButton(document.getElementById('staff-login-btn'),
+      { type: 'standard', size: 'medium', theme: 'outline', text: 'sign_in_with', shape: 'pill' });
+    google.accounts.id.prompt();
+  };
+  if (window.google && google.accounts) return init();
+  if (document.getElementById('gsi-script')) return;
+  const s = document.createElement('script');
+  s.id = 'gsi-script'; s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.onload = init;
+  document.head.appendChild(s);
+}
+function onStaffSignIn(resp) {
+  const msg = document.getElementById('staff-login-msg');
+  try {
+    const b64 = resp.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    if (!String(payload.email || '').endsWith('@' + STAFF_DOMAIN)) {
+      msg.textContent = '此帳號不是公司帳號（需 @' + STAFF_DOMAIN + '）';
+      return;
+    }
+    sessionStorage.setItem('xw_staff', JSON.stringify({ email: payload.email, token: resp.credential, exp: payload.exp }));
+    location.reload();
+  } catch (e) { msg.textContent = '登入失敗，請再試一次'; }
 }
 
 async function loadConfig() {

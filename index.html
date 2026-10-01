@@ -2205,10 +2205,13 @@ function renderSettings() {
           background:${pubOpen ? 'var(--green-bg)' : 'var(--red-bg)'};color:${pubOpen ? 'var(--green-text)' : 'var(--red-text)'};">
           ${pubOpen ? '● 開放中' : '● 已關閉'}</span>
         <a href="https://ivyfuh.github.io/xuanwu-qingshui/public.html" target="_blank" class="text-xs" style="margin-left:auto;color:var(--brand-text);">
-          <i class="ti ti-external-link"></i> 看地主頁</a>
+          <i class="ti ti-external-link"></i> 地主看到的畫面</a>
+        <a href="https://ivyfuh.github.io/xuanwu-qingshui/public.html?staff=1" target="_blank" class="text-xs" style="margin-left:12px;color:var(--brand-text);">
+          <i class="ti ti-eye"></i> 內部預覽（完整內容）</a>
       </div>
       <div class="text-xs text-muted" style="margin-bottom:12px;line-height:1.6;">
-        關閉時，地主頁只保留公告與進度條，<b>隱藏選屋狀態圖與身分查詢</b>，改顯示下方說明（後端同步拒絕查詢，約 20 秒內生效）。
+        暫停時，地主頁整頁只顯示<b>公司 Logo＋「本平台目前暫停開放查詢…」＋聯絡電話</b>，後端同步拒絕查詢（約 20 秒內生效）。<br>
+        內部同仁點「內部預覽」並以公司 Google 帳號登入，仍可看完整地主頁。
       </div>
       <div class="flex gap-8" style="margin-bottom:10px;">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
@@ -2216,9 +2219,11 @@ function renderSettings() {
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-left:16px;">
           <input type="radio" name="pub-open" value="false" ${pubOpen ? '' : 'checked'}> 暫停開放</label>
       </div>
-      <div class="text-xs text-muted" style="margin-bottom:4px;">暫停時顯示的說明（可留空用預設文字）</div>
-      <textarea id="pub-closed-msg" rows="3" style="width:100%;box-sizing:border-box;margin-bottom:8px;"
-        placeholder="例：抽籤作業進行中，結果確認後將重新開放查詢。如需了解選配情形，請洽漢皇建設 服務專線 02-XXXX-XXXX">${escH(cfg.public_closed_msg)}</textarea>
+      <div class="text-xs text-muted" style="margin-bottom:4px;">聯絡電話（顯示在暫停畫面，手機可直接點撥）</div>
+      <input type="text" id="pub-contact-phone" value="${escH(cfg.public_contact_phone || '02-2242-1200')}" style="width:220px;margin-bottom:10px;">
+      <div class="text-xs text-muted" style="margin-bottom:4px;">補充說明（選填，顯示在主文字下方）</div>
+      <textarea id="pub-closed-msg" rows="2" style="width:100%;box-sizing:border-box;margin-bottom:8px;"
+        placeholder="例：抽籤作業進行中，結果確認後將重新開放查詢。">${escH(cfg.public_closed_msg)}</textarea>
       <div class="text-xs text-muted" style="margin-bottom:4px;">預計重新開放日期（選填，自由文字）</div>
       <input type="text" id="pub-reopen-date" value="${escH(cfg.public_reopen_date)}" placeholder="例：115/11/15" style="width:220px;margin-bottom:10px;">
       <div id="pub-msg" style="margin-bottom:8px;"></div>
@@ -2277,6 +2282,7 @@ async function savePublicAccess() {
   const enabled  = document.querySelector('input[name="pub-open"]:checked')?.value === 'true';
   const closed_msg  = document.getElementById('pub-closed-msg')?.value.trim() || '';
   const reopen_date = document.getElementById('pub-reopen-date')?.value.trim() || '';
+  const contact_phone = document.getElementById('pub-contact-phone')?.value.trim() || '';
   const wasOpen = (STATE.caseConfig || {}).public_enabled !== false;
   if (wasOpen && !enabled && !confirm('確定要「暫停開放」地主查閱頁？\n地主將無法查詢個人選配與選屋狀態圖。')) return;
   if (!wasOpen && enabled && !confirm('確定要「重新開放」地主查閱頁？\n地主將可再查詢個人選配與選屋狀態圖。')) return;
@@ -2284,8 +2290,8 @@ async function savePublicAccess() {
   const msg = document.getElementById('pub-msg');
   if (btn) { btn.disabled = true; btn.textContent = '儲存中…'; }
   try {
-    await apiPost('setPublicAccess', { enabled, closed_msg, reopen_date });
-    STATE.caseConfig = { ...(STATE.caseConfig || {}), public_enabled: enabled, public_closed_msg: closed_msg, public_reopen_date: reopen_date };
+    await apiPost('setPublicAccess', { enabled, closed_msg, reopen_date, contact_phone });
+    STATE.caseConfig = { ...(STATE.caseConfig || {}), public_enabled: enabled, public_closed_msg: closed_msg, public_reopen_date: reopen_date, public_contact_phone: contact_phone };
     renderSettings();
     const m = document.getElementById('pub-msg');
     if (m) m.innerHTML = `<div style="background:var(--green-bg);color:var(--green-text);padding:8px 12px;border-radius:6px;font-size:12px;">已儲存：地主查閱頁目前為「${enabled ? '開放中' : '暫停開放'}」。</div>`;
